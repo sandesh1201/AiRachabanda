@@ -1,7 +1,7 @@
 # AI Rachabanda — project requirements
 
 Status: active. These requirements are mandatory for every milestone.
-Source: project owner instructions, the Milestone 002 architecture review, and the Milestone 003 implementation decision.
+Source: project owner instructions, the Milestone 002 architecture review, the Milestone 003 implementation decision, and the Milestone 003A display correction.
 Last updated: 23 November 2026.
 
 ## Identity
@@ -58,6 +58,7 @@ If a feature cannot be built inside these limits, the limitation is reported and
 - A provider participates in one of three modes: Automated, Assisted, or Unavailable. Account status is stored separately from participation mode.
 - The application never generates a response for an assisted participant.
 - Zero-Cost Mode is mandatory in Phase 1. The application has no control that enables paid inference.
+- A Devil's Advocate review is a mandatory Phase 1 orchestration role. It examines claims already in the conversation. It does not invent disagreement, evidence, or citations, and it does not assign a confidence percentage. The role is available to assisted and automated participants. Claude is eligible through the assisted workflow. A critique is not described as independent verification unless a different underlying model identity is on record. The workflow, data model, and benchmark plan are in `docs/architecture/devils-advocate.md`.
 
 ## Capabilities the product must grow to include
 
@@ -85,6 +86,8 @@ These remain requirements. Milestone 002 does not implement them.
 Milestone 002 is accepted as partial. Its feasibility findings remain in force and are not reopened by later milestones.
 
 Milestone 003 builds the Android application foundation. The implementation record is `docs/milestones/003-implementation-report.md`. Milestone 003 does not authorize a live inference request. Automated requests stay blocked while billing eligibility is unverified, and ChatGPT plan usage stays blocked while credit spend cannot be refused by the application.
+
+Milestone 003A corrects the phone display. The application lays out from the Android window size, in density-independent pixels. A forced guest display size is not part of the application. The Devil's Advocate role is specified in `docs/architecture/devils-advocate.md`, tested in `docs/TEST_PLAN.md`, and scheduled in `docs/ROADMAP.md`. Live inference remains unauthorized.
 
 ## Toolchain pin for Milestone 003
 

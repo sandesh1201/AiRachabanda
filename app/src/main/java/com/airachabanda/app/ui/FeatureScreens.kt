@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.airachabanda.app.core.model.AccountChoice
+import com.airachabanda.app.orchestration.DevilAdvocatePolicy
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.AssistedTaskState
 import com.airachabanda.app.core.model.BillingEligibility
@@ -125,6 +126,7 @@ fun CouncilScreen(
     onModeChange: (ResearchMode) -> Unit,
     onAddMessage: (String) -> Unit,
     onPrepare: (ProviderId, String, ResearchMode) -> Unit,
+    onPrepareCritique: () -> Unit,
     onCopy: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onSkip: (String) -> Unit,
@@ -213,6 +215,19 @@ fun CouncilScreen(
                         enabled = question.isNotBlank(),
                     ) { Text("Prepare ChatGPT prompt") }
                 }
+                val critique = DevilAdvocatePolicy.assess(
+                    mode = mode,
+                    messages = messages,
+                    reviewer = ProviderId.CLAUDE,
+                    customRounds = 3,
+                    automatedBudget = 0,
+                )
+                Button(
+                    onClick = onPrepareCritique,
+                    enabled = critique.assistedReviewPermitted,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Prepare Claude critique") }
+                Text(critique.disclosure, style = MaterialTheme.typography.bodySmall)
                 ProviderRegistry.definition(ProviderId.CLAUDE).officialHttpsUrl?.let { url ->
                     OutlinedButton(onClick = { onOpenUrl(url) }) { Text("Open Claude") }
                 }

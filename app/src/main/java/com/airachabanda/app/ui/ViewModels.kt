@@ -18,6 +18,8 @@ import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.core.model.ResearchTask
 import com.airachabanda.app.core.model.WorkflowEvent
 import com.airachabanda.app.orchestration.AssistedPrompt
+import com.airachabanda.app.orchestration.CritiquePrompt
+import com.airachabanda.app.orchestration.DevilAdvocatePolicy
 import com.airachabanda.app.orchestration.ImportRules
 import com.airachabanda.app.provider.ProviderRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +73,8 @@ class CouncilViewModel(container: AppContainer) : ViewModel() {
     val messages: StateFlow<List<ChatMessage>> = selectedConversationId
         .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.observeMessages(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val maxRounds: StateFlow<Int> = container.preferences.maxRounds
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 3)
     val tasks: StateFlow<List<ResearchTask>> = selectedConversationId
         .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.observeTasks(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -108,6 +112,36 @@ class CouncilViewModel(container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             val id = repository.prepareAssistedTask(conversationId, providerId, prompt, roundNumber = 1)
             onPrepared(id)
+        }
+    }
+
+    fun prepareCritique(
+        conversationId: String,
+        mode: ResearchMode,
+        onResult: (String) -> Unit,
+    ) {
+        val decision = DevilAdvocatePolicy.assess(
+            mode = mode,
+            messages = messages.value,
+            reviewer = ProviderId.CLAUDE,
+            customRounds = maxRounds.value,
+            automatedBudget = 0,
+        )
+        if (!decision.assistedReviewPermitted) {
+            onResult(decision.disclosure)
+            return
+        }
+        val round = (messages.value.mapNotNull { it.roundNumber }.maxOrNull() ?: 0) + 1
+        val prompt = CritiquePrompt.prepare(
+            reviewerName = ProviderRegistry.definition(ProviderId.CLAUDE).displayName,
+            modeLabel = mode.name.replace('_', ' ').lowercase().replaceFirstChar { it.titlecase() },
+            roundNumber = round,
+            messages = messages.value,
+            disclosure = decision.disclosure,
+        )
+        viewModelScope.launch {
+            repository.prepareAssistedTask(conversationId, ProviderId.CLAUDE, prompt, round)
+            onResult("Claude critique prepared for round $round. Claude is not researching inside this app. ${decision.disclosure}")
         }
     }
 

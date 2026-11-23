@@ -1,7 +1,12 @@
 package com.airachabanda.app
 
 import com.airachabanda.app.core.model.BillingEligibility
+import com.airachabanda.app.core.model.ChatMessage
+import com.airachabanda.app.core.model.MessageSource
 import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.core.model.ResearchMode
+import com.airachabanda.app.orchestration.CritiquePrompt
+import com.airachabanda.app.orchestration.DevilAdvocatePolicy
 import com.airachabanda.app.orchestration.ImportRules
 import com.airachabanda.app.orchestration.ZeroCostPolicy
 import com.airachabanda.app.provider.OpenRouterRoutePolicy
@@ -79,5 +84,44 @@ class PolicyTest {
         val cleaned = RedactedLog.redact("Authorization: Bearer sk-testsecretvalue and api_key=abcd1234")
         assertFalse(cleaned.contains("sk-testsecretvalue"))
         assertFalse(cleaned.contains("abcd1234"))
+    }
+
+    @Test
+    fun devilAdvocatePreparesAnAssistedCritiqueAndDoesNotAuthorizeAutomation() {
+        val empty = DevilAdvocatePolicy.assess(ResearchMode.STANDARD, emptyList(), ProviderId.CLAUDE, 3, 5)
+        assertFalse(empty.assistedReviewPermitted)
+        assertFalse(empty.automatedReviewPermitted)
+
+        val message = ChatMessage(
+            id = "m1",
+            conversationId = "c1",
+            providerId = ProviderId.CHATGPT,
+            source = MessageSource.USER_SUPPLIED_PROVIDER_ATTRIBUTED,
+            body = "The capital of France is Lyon.",
+            roundNumber = 1,
+            createdAtEpochMs = 0,
+        )
+        val standard = DevilAdvocatePolicy.assess(ResearchMode.STANDARD, listOf(message), ProviderId.CLAUDE, 3, 5)
+        assertTrue(standard.assistedReviewPermitted)
+        assertFalse(standard.automatedReviewPermitted)
+        assertFalse(standard.independentReviewAvailable)
+        assertEquals(1, standard.plannedRounds)
+        assertFalse(DevilAdvocatePolicy.PAID_INFERENCE_PERMITTED)
+
+        val deep = DevilAdvocatePolicy.assess(ResearchMode.DEEP_RESEARCH, listOf(message), ProviderId.CLAUDE, 3, 0)
+        assertEquals(3, deep.plannedRounds)
+        assertFalse(deep.automatedReviewPermitted)
+
+        val customOff = DevilAdvocatePolicy.assess(ResearchMode.CUSTOM, listOf(message), ProviderId.CLAUDE, 0, 5)
+        assertFalse(customOff.assistedReviewPermitted)
+        assertTrue(customOff.disclosure.contains("reduced"))
+
+        val prompt = CritiquePrompt.prepare("Claude", "Standard", 2, listOf(message), standard.disclosure)
+        assertTrue(prompt.contains("Devil's Advocate"))
+        assertTrue(prompt.contains("Discussion round: 2"))
+        assertTrue(prompt.contains("The capital of France is Lyon."))
+        assertTrue(prompt.contains("Do not invent evidence"))
+        assertTrue(prompt.contains("not independent verification"))
+        assertTrue(prompt.contains("Do not assign a confidence percentage"))
     }
 }

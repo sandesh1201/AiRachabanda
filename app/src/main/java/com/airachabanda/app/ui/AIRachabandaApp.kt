@@ -270,6 +270,10 @@ private fun CouncilRoute(
                 notice("Prompt prepared. ${provider.name} is not researching inside this app.")
             }
         },
+        onPrepareCritique = {
+            val id = conversationId ?: return@CouncilScreen
+            model.prepareCritique(id, conversation?.researchMode ?: ResearchMode.STANDARD, notice)
+        },
         onCopy = { text -> notice(ExternalLinks.copy(application, "AI Rachabanda prompt", text)) },
         onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
         onSkip = model::skip,

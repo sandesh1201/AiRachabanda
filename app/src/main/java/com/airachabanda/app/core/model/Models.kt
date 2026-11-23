@@ -170,3 +170,44 @@ data class ImportDraft(
     val body: String,
     val taskId: String?,
 )
+
+enum class ObjectionCategory {
+    UNSUPPORTED_ASSUMPTION,
+    FACTUAL_ERROR,
+    MATHEMATICAL_ERROR,
+    LOGICAL_INCONSISTENCY,
+    MISSING_CONTEXT,
+    COUNTEREXAMPLE,
+    WEAK_CITATION,
+    ALTERNATIVE_EXPLANATION,
+}
+
+enum class ObjectionSeverity {
+    LOW,
+    MEDIUM,
+    HIGH,
+}
+
+enum class ResolutionStatus {
+    OPEN,
+    CONFIRMED_ERROR,
+    CORRECTED,
+    REBUTTED_WITH_EVIDENCE,
+    UNRESOLVED,
+    INSUFFICIENT_EVIDENCE,
+}
+
+data class Objection(
+    val id: String,
+    val targetClaimId: String,
+    val authorParticipantId: ProviderId,
+    val underlyingModelId: String?,
+    val roundNumber: Int,
+    val category: ObjectionCategory,
+    val severity: ObjectionSeverity,
+    val explanation: String,
+    val supportingEvidence: String,
+    val requestedVerification: String,
+    val rebuttal: String?,
+    val resolution: ResolutionStatus,
+)
