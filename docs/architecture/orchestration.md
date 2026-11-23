@@ -35,3 +35,11 @@ Standard and Deep Research require a critique capability. Quick mode adds it whe
 `CouncilProtocol` accepts only the six workflow actions: additional research, a challenge, verification, a rebuttal, a correction, and a synthesis recommendation. Every action is untrusted. The engine checks the session state, the actor's role, a non-empty body, and the remaining request budget before it writes the action. An accepted action does not change billing, credentials, or the budget ceiling, and it is not executed as code.
 
 Research and follow-up tasks leave one automated request unused for an automated Devil's Advocate and one for an automated final synthesizer when those roles are automated. Assisted critique and synthesis do not spend the automated budget. The session also has a 60-minute local limit. Provider quotas are not invented.
+
+## Milestone 004B
+
+`OpenRouterDispatch` can reserve one request and store a completed stream once. Production authorization has metadata and inference off, so `dispatchTask` returns a policy refusal and writes nothing. An incomplete stream, a missing generation id, a cancellation, a timeout, or an unknown outcome is not stored as a finished answer and is not retried. A second insert of the same generation id is a duplicate and does not add another message.
+
+Review labels are `SELF_CRITIQUE`, `SAME_MODEL_REVIEW`, `CROSS_MODEL_REVIEW`, and `INDEPENDENCE_UNVERIFIED`. The same participant reviewing its own role is reduced verification. Different hosts of the same verified model are not independent. Unknown or user-declared identity cannot establish independence. Cross-model agreement is not proof.
+
+One OpenRouter account can hold several eligible catalog models. Each participant key is the provider plus the model id. The production source still emits one participant per configured provider. It does not invent model ids. Room schema version 4 adds `capabilityNote` and `provider_completions` through `Migrations.MIGRATION_3_4`.

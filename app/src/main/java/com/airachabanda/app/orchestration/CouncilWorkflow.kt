@@ -32,6 +32,8 @@ data class CouncilStage(
     val finalAnswer: String?,
     val assistedOnly: Boolean,
     val critiqueNote: String,
+    val reviewClassification: String = "Not assessed",
+    val reviewDisclosure: String = "Reviewer independence has not been assessed.",
 )
 
 class CouncilWorkflow(
@@ -77,6 +79,7 @@ class CouncilWorkflow(
         val finalAnswer = discussion.conclusions(session.id).lastOrNull { it.kind == "FINAL" }?.body
         val assistedOnly = people.isEmpty() || people.all { it.participationMode == "ASSISTED" }
         val critique = tasks.firstOrNull { it.kind == "CRITIQUE" }
+        val review = reviewAssessment(people)
         return CouncilStage(
             sessionId = session.id,
             stage = stageLabel(session.state),
@@ -106,6 +109,49 @@ class CouncilWorkflow(
                 critique.state in OPEN -> "Critical review is waiting for your imported response."
                 else -> "A critique response has been imported. It is not authenticated or independently verified."
             },
+            reviewClassification = review.classification.name,
+            reviewDisclosure = review.disclosure,
+        )
+    }
+
+    private suspend fun reviewAssessment(people: List<com.airachabanda.app.persistence.ParticipantEntity>): ReviewAssessment {
+        if (people.isEmpty()) {
+            return ReviewAssessment(
+                ReviewClassification.INDEPENDENCE_UNVERIFIED,
+                "Review classification: INDEPENDENCE_UNVERIFIED. No participant is assigned.",
+            )
+        }
+        val advocate = people.firstOrNull { person ->
+            discussion.roles(person.id).any { it.role == ParticipantRole.DEVILS_ADVOCATE.name }
+        }
+        val researchers = people.filter { person ->
+            discussion.roles(person.id).any { it.role == ParticipantRole.RESEARCHER.name }
+        }
+        if (advocate == null) {
+            return ReviewAssessment(
+                ReviewClassification.INDEPENDENCE_UNVERIFIED,
+                "Review classification: INDEPENDENCE_UNVERIFIED. No Devil's Advocate is assigned.",
+            )
+        }
+        val advocateModel = discussion.modelIdentity(advocate.id)?.verifiedModelId ?: ModelIdentity.UNKNOWN
+        val peers = (if (researchers.isEmpty()) listOf(advocate) else researchers).map { person ->
+            EligibleParticipant(
+                providerId = ProviderId.valueOf(person.providerId),
+                assisted = person.participationMode == "ASSISTED",
+                billing = com.airachabanda.app.core.model.BillingEligibility.UNKNOWN,
+                verifiedModelId = discussion.modelIdentity(person.id)?.verifiedModelId ?: ModelIdentity.UNKNOWN,
+                participantKey = person.id,
+            )
+        }
+        return ReviewIndependence.summarize(
+            reviewer = EligibleParticipant(
+                providerId = ProviderId.valueOf(advocate.providerId),
+                assisted = advocate.participationMode == "ASSISTED",
+                billing = com.airachabanda.app.core.model.BillingEligibility.UNKNOWN,
+                verifiedModelId = advocateModel,
+                participantKey = advocate.id,
+            ),
+            comparedWith = peers,
         )
     }
 

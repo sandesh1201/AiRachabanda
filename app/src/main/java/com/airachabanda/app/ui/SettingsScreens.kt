@@ -51,6 +51,7 @@ fun SettingsRoot(
         "appearance" to "Appearance",
         "privacy" to "Privacy & Security",
         "storage" to "Storage",
+        "openrouter" to "OpenRouter",
         "about" to "About",
     )
     LazyColumn(contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -76,6 +77,9 @@ fun SettingsDetail(
     onMaxRounds: (Int) -> Unit,
     onOpenAccount: (ProviderId) -> Unit,
     onDelete: () -> Unit,
+    openRouterStored: Boolean,
+    onSaveOpenRouter: (String) -> Unit,
+    onRemoveOpenRouter: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(
@@ -134,17 +138,59 @@ fun SettingsDetail(
             }
             "privacy" -> {
                 Text("Privacy & Security", style = MaterialTheme.typography.headlineSmall)
-                Text("Conversations stay on this device. The app does not collect provider passwords or session cookies. Logs redact tokens and API keys. External links use HTTPS. Provider credentials are not stored in this version.")
+                Text("Conversations stay on this device. The app does not collect provider passwords or session cookies. Logs redact tokens and API keys. External links use HTTPS. An OpenRouter key, if you save one, stays in Android Keystore and is not shown again.")
                 Text(ClaudeAssistedLinks.STATUS_SUMMARY)
             }
             "storage" -> StorageSettings(onDelete)
+            "openrouter" -> OpenRouterSettings(openRouterStored, onSaveOpenRouter, onRemoveOpenRouter)
             else -> {
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.4.1. Council actions use the local discussion engine. This build does not send live AI requests.")
+                Text("Version 0.4.2. OpenRouter is prepared and live requests stay off. This build does not send live AI requests.")
             }
         }
+    }
+}
+
+@Composable
+private fun OpenRouterSettings(
+    stored: Boolean,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var key by rememberSaveable { mutableStateOf("") }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("OpenRouter", style = MaterialTheme.typography.headlineSmall)
+        Text("Connection status: Not verified. No metadata request has been sent.")
+        Text("Integration status: Prepared and disabled. Automated inference is off.")
+        Text("Billing eligibility: Unverified. Saving a key does not prove a free allowance.")
+        Text("Available models: None discovered. This screen does not use a hardcoded catalog.")
+        Text("Supported capabilities: Text chat is the only prepared capability. Tools, plugins, images, and provider fallbacks are not enabled.")
+        Text("Last verification: Never.")
+        Text("Observed usage limits: Not observed. Provider quotas are not invented.")
+        Text(if (stored) "A credential is stored on this device. The key is not shown." else "No OpenRouter credential is stored.")
+        OutlinedTextField(
+            value = key,
+            onValueChange = { key = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("API key") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            singleLine = true,
+        )
+        Button(
+            onClick = {
+                onSave(key)
+                key = ""
+            },
+            enabled = key.isNotBlank(),
+        ) { Text("Save credential") }
+        Button(onClick = onRemove, enabled = stored) { Text("Remove credential") }
+        Button(onClick = {}, enabled = false) { Text("Verify connection") }
+        Text("Verify connection is disabled. A zero credit limit is not sufficient proof that free models can be called, and live metadata checks are not authorized. Enter the key only in this field.")
     }
 }
 

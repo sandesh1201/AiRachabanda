@@ -9,10 +9,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 003A: phone display restored by clearing the guest size override. Devil's Advocate role specified. Assisted Claude critique prompt added. Accuracy is not claimed.
 - Milestone 004: portrait display rechecked at 1080×2424 and 420 dpi. Android Keystore AES-256-GCM credential store. Room schema version 2 migration. Orchestration engine and dynamic roles. Accuracy is not claimed. No live request was sent.
 - Milestone 004A: Council actions use the orchestration engine. Room schema version 3. Dynamic roles, critical review, validated workflow actions, and request budgeting. Assisted workflow exercised on the portrait phone. Accuracy is not claimed. No live request was sent.
+- Milestone 004B: Android Keystore instrumentation on the emulator. Fail-closed OpenRouter adapter and configuration screen. Reviewer classifications. Room schema version 4. No live metadata request and no live inference.
 
 ## Next
 
-No further milestone is authorized. Milestone 004B was not started.
+Milestone 005 is proposed and is not authorized. It would be a metadata-only OpenRouter check after the owner creates a restricted key and explicitly allows that check. It does not include a chat completion until that metadata proves the zero-cost conditions.
 
 ## Later
 

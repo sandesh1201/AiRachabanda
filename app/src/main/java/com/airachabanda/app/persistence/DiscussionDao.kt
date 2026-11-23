@@ -77,6 +77,12 @@ interface DiscussionDao {
     @Query("SELECT * FROM protocol_actions WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC")
     suspend fun protocolActions(sessionId: String): List<ProtocolActionEntity>
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertCompletion(entity: ProviderCompletionEntity)
+
+    @Query("SELECT * FROM provider_completions WHERE id = :id")
+    suspend fun completion(id: String): ProviderCompletionEntity?
+
     @Query("SELECT * FROM participants WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC")
     suspend fun participants(sessionId: String): List<ParticipantEntity>
 

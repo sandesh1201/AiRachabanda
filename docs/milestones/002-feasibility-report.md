@@ -228,6 +228,8 @@ Safe setup:
 4. Send only `openrouter/free` or a single `:free` id.
 5. On HTTP 402, disable the key.
 
+Milestone 004B re-read the key, models, chat, streaming, limits, free-variant, routing, and plugin pages on 23 November 2026. A numeric limit of 0 is still necessary and is still not proof that a free model can be called. The adapter rejects paid models, unknown pricing, paid fallbacks, and live calls. The metadata call in step 3 has not been made.
+
 ### Cloudflare Workers AI
 
 | Topic | Official page | Finding |

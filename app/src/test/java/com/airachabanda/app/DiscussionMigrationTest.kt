@@ -70,7 +70,7 @@ class DiscussionMigrationTest {
         helper.close()
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, NAME)
-            .addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3)
+            .addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
         try {
@@ -115,6 +115,7 @@ class DiscussionMigrationTest {
                 "workflow_checkpoints",
                 "request_budget_entries",
                 "protocol_actions",
+                "provider_completions",
             ).forEach { name -> assertTrue(name, tables.contains(name)) }
         } finally {
             migrated.close()

@@ -34,6 +34,11 @@ import com.airachabanda.app.persistence.VerificationResultEntity
 import com.airachabanda.app.persistence.WorkflowCheckpointEntity
 import com.airachabanda.app.persistence.WorkflowEventEntity
 import com.airachabanda.app.provider.ProviderRegistry
+import com.airachabanda.app.provider.openrouter.DispatchCommand
+import com.airachabanda.app.provider.openrouter.DispatchOutcome
+import com.airachabanda.app.provider.openrouter.OpenRouterCandidate
+import com.airachabanda.app.provider.openrouter.OpenRouterDispatch
+import com.airachabanda.app.provider.openrouter.OpenRouterFailure
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
@@ -89,6 +94,7 @@ class OrchestrationEngine(
     private val participants: ParticipantSource,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val ids: () -> String = { UUID.randomUUID().toString() },
+    private val dispatcher: OpenRouterDispatch? = null,
 ) {
     private val mutex = Mutex()
 
@@ -982,6 +988,28 @@ class OrchestrationEngine(
         )
     }
 
+    suspend fun dispatchTask(sessionId: String, taskId: String, apiKey: String, candidate: OpenRouterCandidate): DispatchOutcome = mutex.withLock {
+        val task = council.tasksForSession(sessionId).firstOrNull { it.id == taskId }
+            ?: return DispatchOutcome(OpenRouterFailure.POLICY, "The task is not in this session.", completed = false)
+        val session = discussion.session(sessionId)
+            ?: return DispatchOutcome(OpenRouterFailure.POLICY, "The session is not open.", completed = false)
+        val remaining = session.requestBudget - session.requestsConsumed
+        val bounded = candidate.copy(sessionBudgetRemaining = minOf(candidate.sessionBudgetRemaining, remaining))
+        val active = dispatcher
+            ?: return DispatchOutcome(OpenRouterFailure.POLICY, "No provider dispatcher is connected. No request was sent.", completed = false)
+        return active.dispatch(
+            DispatchCommand(
+                sessionId = sessionId,
+                conversationId = task.conversationId,
+                taskId = taskId,
+                prompt = task.prompt,
+                candidate = bounded,
+                apiKey = apiKey,
+                roundNumber = task.roundNumber,
+            ),
+        )
+    }
+
     private fun select(raw: List<EligibleParticipant>): List<EligibleParticipant> =
         raw.mapNotNull { candidate ->
             val automated = !candidate.assisted &&
@@ -991,7 +1019,7 @@ class OrchestrationEngine(
                 automated -> candidate
                 else -> null
             }
-        }.distinctBy { it.providerId }
+        }.distinctBy { it.participantKey }
 
     private suspend fun persistParticipants(
         sessionId: String,
@@ -1021,9 +1049,10 @@ class OrchestrationEngine(
                     verifiedModelId = ModelIdentity.declared(candidate.verifiedModelId),
                     independentlyVerified = ModelIdentity.declared(candidate.verifiedModelId) != ModelIdentity.UNKNOWN,
                     createdAtEpochMs = now,
+                    capabilityNote = candidate.capabilityNote,
                 ),
             )
-            grants.filter { it.providerId == candidate.providerId }.forEach { grant ->
+            grants.filter { it.participantKey == candidate.participantKey }.forEach { grant ->
                 discussion.insertRole(
                     ParticipantRoleEntity(
                         id = ids(),

@@ -14,6 +14,8 @@ import com.airachabanda.app.core.model.Conversation
 import com.airachabanda.app.core.model.ImportDraft
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.security.CredentialAccess
+import com.airachabanda.app.security.CredentialAccounts
 import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.core.model.ResearchTask
 import com.airachabanda.app.core.model.WorkflowEvent
@@ -255,6 +257,17 @@ class SettingsViewModel(container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ResearchMode.STANDARD)
     val maxRounds: StateFlow<Int> = preferences.maxRounds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 3)
+    private val credentialRevision = MutableStateFlow(0)
+    val openRouterStored: StateFlow<Boolean> = credentialRevision
+        .flatMapLatest {
+            kotlinx.coroutines.flow.flow {
+                val access = credentials.get(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT)
+                val stored = access is CredentialAccess.Available
+                if (access is CredentialAccess.Available) access.secret.fill(0)
+                emit(stored)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun setAppearance(mode: AppearanceMode) {
         viewModelScope.launch { preferences.setAppearance(mode) }
@@ -266,6 +279,27 @@ class SettingsViewModel(container: AppContainer) : ViewModel() {
 
     fun setMaxRounds(rounds: Int) {
         viewModelScope.launch { preferences.setMaxRounds(rounds) }
+    }
+
+    fun saveOpenRouterKey(secret: String, onResult: (String) -> Unit) {
+        val trimmed = secret.trim()
+        if (trimmed.isEmpty()) {
+            onResult("Enter the key in the OpenRouter field. It is not requested in chat.")
+            return
+        }
+        viewModelScope.launch {
+            credentials.put(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT, trimmed.toByteArray(Charsets.UTF_8))
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The OpenRouter key is stored in Android Keystore. It is not shown again.")
+        }
+    }
+
+    fun removeOpenRouterKey(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            credentials.delete(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT)
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The OpenRouter key was removed from this device.")
+        }
     }
 
     fun deleteLocalData(onDone: () -> Unit) {

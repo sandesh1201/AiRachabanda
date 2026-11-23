@@ -13,12 +13,15 @@ data class EligibleParticipant(
     val billing: BillingEligibility,
     val userDeclaredModelId: String = ModelIdentity.UNKNOWN,
     val verifiedModelId: String = ModelIdentity.UNKNOWN,
+    val participantKey: String = providerId.name,
+    val capabilityNote: String = "",
 )
 
 data class RoleGrant(
     val providerId: ProviderId,
     val role: ParticipantRole,
     val reason: String,
+    val participantKey: String = providerId.name,
 )
 
 object RoleAssignment {
@@ -45,7 +48,7 @@ object RoleAssignment {
         excludedProviders: Set<ProviderId> = emptySet(),
     ): List<RoleGrant> {
         val available = participants
-            .distinctBy { it.providerId }
+            .distinctBy { it.participantKey }
             .filter { it.providerId !in excludedProviders }
             .filter { candidate ->
                 val quota = knownQuotas[candidate.providerId]
@@ -58,10 +61,12 @@ object RoleAssignment {
         )
         val needed = capabilitiesFor(complexity) + requiredCapabilities
         val grants = mutableListOf<RoleGrant>()
+        val moderator = ordered.first()
         grants += RoleGrant(
-            providerId = ordered.first().providerId,
+            providerId = moderator.providerId,
             role = ParticipantRole.MODERATOR,
             reason = "Assigned for this session because a moderator is required. Complexity is $complexity. This role is not reserved for one provider.",
+            participantKey = moderator.participantKey,
         )
         if (RESEARCH in needed) {
             ordered.forEach { participant ->
@@ -69,6 +74,7 @@ object RoleAssignment {
                     providerId = participant.providerId,
                     role = ParticipantRole.RESEARCHER,
                     reason = "Assigned because complexity $complexity requires research.",
+                    participantKey = participant.participantKey,
                 )
             }
         }
@@ -77,6 +83,7 @@ object RoleAssignment {
                 providerId = ordered.first().providerId,
                 role = ParticipantRole.ANALYST,
                 reason = "Assigned because complexity $complexity requires analysis.",
+                participantKey = ordered.first().participantKey,
             )
         }
         if (DOMAIN in needed) {
@@ -84,17 +91,18 @@ object RoleAssignment {
                 providerId = ordered.first().providerId,
                 role = ParticipantRole.DOMAIN_SPECIALIST,
                 reason = "Assigned because complexity $complexity requires domain review.",
+                participantKey = ordered.first().participantKey,
             )
         }
         val synthesizer = if (SYNTHESIS in needed) {
-            val providerId = ordered.lastOrNull { remainingBudget > 0 || it.assisted }?.providerId
-                ?: ordered.last().providerId
+            val chosen = ordered.lastOrNull { remainingBudget > 0 || it.assisted } ?: ordered.last()
             grants += RoleGrant(
-                providerId = providerId,
+                providerId = chosen.providerId,
                 role = ParticipantRole.FINAL_SYNTHESIZER,
                 reason = "Assigned for this session because synthesis is required. This role is not reserved for one provider.",
+                participantKey = chosen.participantKey,
             )
-            providerId
+            chosen.participantKey
         } else {
             null
         }
@@ -104,15 +112,15 @@ object RoleAssignment {
             val independent = nonAuthors.firstOrNull { candidate ->
                 candidate.verifiedModelId != ModelIdentity.UNKNOWN &&
                     authors.none { it.verifiedModelId == candidate.verifiedModelId } &&
-                    candidate.providerId != synthesizer
+                    candidate.participantKey != synthesizer
             } ?: nonAuthors.firstOrNull { candidate ->
                 candidate.verifiedModelId != ModelIdentity.UNKNOWN &&
                     authors.none { it.verifiedModelId == candidate.verifiedModelId }
             }
             val chosen = independent
-                ?: nonAuthors.firstOrNull { it.providerId != synthesizer }
+                ?: nonAuthors.firstOrNull { it.participantKey != synthesizer }
                 ?: nonAuthors.firstOrNull()
-                ?: ordered.firstOrNull { it.providerId != synthesizer }
+                ?: ordered.firstOrNull { it.participantKey != synthesizer }
                 ?: ordered.first()
             val reason = when {
                 chosen.verifiedModelId == ModelIdentity.UNKNOWN ->
@@ -122,18 +130,28 @@ object RoleAssignment {
                 else ->
                     "Assigned for this session because critique is required and the verified model differs from the claim authors."
             }
-            grants += RoleGrant(providerId = chosen.providerId, role = ParticipantRole.DEVILS_ADVOCATE, reason = reason)
+            val classification = ReviewIndependence.summarize(
+                reviewer = chosen,
+                comparedWith = if (authors.isEmpty()) listOf(chosen) else authors,
+            )
+            grants += RoleGrant(
+                providerId = chosen.providerId,
+                role = ParticipantRole.DEVILS_ADVOCATE,
+                reason = "$reason ${classification.disclosure}",
+                participantKey = chosen.participantKey,
+            )
         }
         if (VERIFICATION in needed) {
-            val critic = grants.firstOrNull { it.role == ParticipantRole.DEVILS_ADVOCATE }?.providerId
+            val critic = grants.firstOrNull { it.role == ParticipantRole.DEVILS_ADVOCATE }?.participantKey
             val avoid = setOfNotNull(synthesizer, critic)
-            val providerId = ordered.firstOrNull { it.providerId !in avoid }?.providerId
-                ?: ordered.firstOrNull { it.providerId != synthesizer }?.providerId
-                ?: ordered.first().providerId
+            val verifier = ordered.firstOrNull { it.participantKey !in avoid }
+                ?: ordered.firstOrNull { it.participantKey != synthesizer }
+                ?: ordered.first()
             grants += RoleGrant(
-                providerId = providerId,
+                providerId = verifier.providerId,
                 role = ParticipantRole.EVIDENCE_VERIFIER,
                 reason = "Assigned because complexity $complexity requires evidence verification.",
+                participantKey = verifier.participantKey,
             )
         }
         return grants

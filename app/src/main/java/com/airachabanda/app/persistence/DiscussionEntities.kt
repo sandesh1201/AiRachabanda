@@ -70,6 +70,8 @@ data class ModelIdentityEntity(
     @ColumnInfo(defaultValue = "0")
     val independentlyVerified: Boolean,
     val createdAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "''")
+    val capabilityNote: String = "",
 )
 
 @Entity(
@@ -298,5 +300,28 @@ data class ProtocolActionEntity(
     val body: String,
     val accepted: Boolean,
     val reason: String,
+    val createdAtEpochMs: Long,
+)
+
+@Entity(
+    tableName = "provider_completions",
+    foreignKeys = [
+        ForeignKey(
+            entity = ResearchSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sessionId"), Index("taskId")],
+)
+data class ProviderCompletionEntity(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val taskId: String,
+    val providerId: String,
+    val modelId: String,
+    val body: String,
+    val complete: Boolean,
     val createdAtEpochMs: Long,
 )

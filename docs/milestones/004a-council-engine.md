@@ -32,4 +32,4 @@ Debug APK assembled. Android lint reported no errors or warnings. Unit tests, in
 
 ## Still open
 
-Automated inference stays disabled. ChatGPT and Claude are not called. No provider quota was measured. A user-declared model name is not verified. The accuracy benchmark and folded-phone layout were not run. Milestone 004B was not started.
+Automated inference stays disabled. ChatGPT and Claude are not called. No provider quota was measured. A user-declared model name is not verified. The accuracy benchmark and folded-phone layout were not run. Milestone 004B later prepared OpenRouter without enabling a live request.

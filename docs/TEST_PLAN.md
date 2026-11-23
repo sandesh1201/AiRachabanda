@@ -62,9 +62,22 @@ On a portrait phone window of 1080×2424 at 420 dpi (411×923 dp):
 
 Android Settings is checked on the same display so a guest-wide size override is not mistaken for an application layout bug.
 
+## Device checks for Milestone 004B
+
+On the same Pixel 9a guest, with the 0.4.2 debug build installed:
+
+- `wm size` reports physical 1080×2424 and no override.
+- `wm density` reports physical 420 and no override.
+- `display_size_forced` is null.
+- Settings, OpenRouter shows connection status, billing eligibility, empty model discovery, masked key entry, and a disabled Verify connection action.
+- A synthetic key typed in that field is shown as dots. After Save credential, the screen says a credential is stored and does not show the key. Remove credential clears it.
+- The three Android Keystore instrumentation tests ran on this emulator and passed. They used synthetic secrets only.
+- This pass does not call OpenRouter.
+
 ## Not yet run
 
-- Instrumentation tests.
+- A live OpenRouter metadata request.
+- A live inference request.
 - Galaxy Z Fold 6 folded and unfolded.
 - The accuracy benchmark in `docs/architecture/devils-advocate.md`.
 - A live provider call. None is authorized.

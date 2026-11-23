@@ -246,4 +246,27 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_protocol_actions_sessionId` ON `protocol_actions` (`sessionId`)")
         }
     }
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `model_identities` ADD COLUMN `capabilityNote` TEXT NOT NULL DEFAULT ''")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `provider_completions` (
+                `id` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL,
+                `taskId` TEXT NOT NULL,
+                `providerId` TEXT NOT NULL,
+                `modelId` TEXT NOT NULL,
+                `body` TEXT NOT NULL,
+                `complete` INTEGER NOT NULL,
+                `createdAtEpochMs` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`sessionId`) REFERENCES `research_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_provider_completions_sessionId` ON `provider_completions` (`sessionId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_provider_completions_taskId` ON `provider_completions` (`taskId`)")
+        }
+    }
 }

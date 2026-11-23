@@ -229,6 +229,7 @@ fun CouncilScreen(
                 Text("Tasks: ${stage?.completedTasks ?: 0} completed, ${stage?.pendingTasks ?: 0} pending.")
                 Text(if (stage?.waitingForUser == true) "Waiting for your response." else "Not waiting for a response.")
                 Text(stage?.critiqueNote ?: "Critical review has not started.")
+                Text(stage?.reviewDisclosure ?: "Reviewer independence has not been assessed.")
                 Text("Objections: ${stage?.objectionCount ?: 0}. Unresolved: ${stage?.unresolvedObjections ?: 0}. Rebuttals: ${stage?.rebuttalCount ?: 0}.")
                 Text("Verification: ${stage?.verification ?: "Not started"}.")
                 Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
