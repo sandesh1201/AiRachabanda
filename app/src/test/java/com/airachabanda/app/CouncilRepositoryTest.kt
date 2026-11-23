@@ -10,6 +10,8 @@ import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.persistence.AppDatabase
 import com.airachabanda.app.persistence.CouncilRepository
+import com.airachabanda.app.security.CredentialAccess
+import com.airachabanda.app.security.CredentialStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -92,5 +94,37 @@ class CouncilRepositoryTest {
         repository.updateTaskState(second, AssistedTaskState.SKIPPED)
         assertEquals(1, repository.observeMessages(id).first().size)
         assertTrue(repository.observeEvents().first().any { it.summary.contains("not an authenticated") })
+    }
+
+    @Test
+    fun notConfiguredAccountDeletesOnlyThatCredential() = runBlocking {
+        val store = RecordingCredentialStore()
+        val secured = CouncilRepository(
+            database.councilDao(),
+            clock = { 1_700_000_000_000L },
+            credentials = store,
+        )
+        secured.ensureSeeded()
+        secured.saveAccountChoice(ProviderId.GROQ, AccountChoice.NOT_CONFIGURED, null)
+        assertEquals(listOf("GROQ"), store.deleted)
+        secured.deleteAllLocalContent()
+        assertTrue(store.deletedAll)
+    }
+}
+
+private class RecordingCredentialStore : CredentialStore {
+    val deleted = mutableListOf<String>()
+    var deletedAll = false
+
+    override suspend fun put(providerId: String, accountKey: String, secret: ByteArray) = Unit
+
+    override suspend fun get(providerId: String, accountKey: String): CredentialAccess = CredentialAccess.Missing
+
+    override suspend fun delete(providerId: String, accountKey: String) {
+        deleted += providerId
+    }
+
+    override suspend fun deleteAll() {
+        deletedAll = true
     }
 }

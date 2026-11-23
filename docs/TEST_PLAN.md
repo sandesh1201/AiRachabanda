@@ -14,7 +14,25 @@ Devil's Advocate checks:
 - Custom depth zero discloses reduced verification and prepares nothing.
 - The Claude prompt names the discussion round, quotes the source material, forbids invented evidence, and states that the review is not independent verification.
 
-Repository tests cover conversation rename and delete, a declared paid plan that does not enable automation, an imported response marked user-supplied, and a skipped task that does not invent a message.
+Repository tests cover conversation rename and delete, a declared paid plan that does not enable automation, an imported response marked user-supplied, a skipped task that does not invent a message, and account disconnection that deletes only that provider's credential.
+
+Credential tests use synthetic secrets. They cover AES-256-GCM encryption, a new initialization vector on replacement, deletion, provider isolation, a restart against the same key and files, tampered ciphertext, a missing key, and concurrent replacement. A Robolectric check confirms the Android Keystore key specification is 256-bit AES-GCM and does not require biometric or device-unlock authentication. The unit tests drive the production envelope through an in-memory key source. They do not call the AndroidKeyStore provider.
+
+Migration tests open a version 1 database that already contains a conversation, message, assisted task, and imported response. After migration, those rows remain, model identity columns are `unknown`, and the discussion tables exist. Room rejects the database if the migrated schema does not match version 2. Production does not use a destructive migration fallback.
+
+Orchestration tests cover role assignment from complexity and an added critique capability, an automated participant that proceeds while an assisted participant is waiting, ChatGPT remaining ineligible for automated budget use, a two-round critique that stops at the round limit and preserves an open objection, and pause, resume, cancel, deadline, and follow-up limits.
+
+## Device checks for Milestone 004
+
+On the same Pixel 9a guest, after boot and again after the critique check:
+
+- `wm size` reports physical 1080×2424 and no override.
+- `wm density` reports physical 420 and no override.
+- `display_size_forced` is unset and `display_density_forced` is null.
+- Window Manager reports `sw411dp w411dp h923dp 420dpi port` and bounds `Rect(0, 0 - 1080, 2424)`.
+- The installed package is versionName 0.4.0, versionCode 4.
+- AI Council in portrait shows the bottom navigation bar and the enabled **Prepare Claude critique** action.
+- Tapping that action creates a round 2 assisted task whose prompt is a Devil's Advocate prompt quoting the imported Claude material. The confirmation says Claude is not researching inside the app.
 
 ## Device checks for the phone display
 

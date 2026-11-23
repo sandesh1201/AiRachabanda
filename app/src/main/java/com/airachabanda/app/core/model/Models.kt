@@ -58,10 +58,16 @@ enum class ResearchMode {
 }
 
 enum class AssistedTaskState {
+    PENDING,
+    READY,
+    RUNNING,
     AWAITING_USER_RESPONSE,
     COMPLETED,
     SKIPPED,
     DEFERRED,
+    BLOCKED,
+    CANCELLED,
+    FAILED,
 }
 
 enum class MessageSource {
@@ -152,6 +158,8 @@ data class ImportedResponse(
     val userSupplied: Boolean,
     val authenticated: Boolean,
     val createdAtEpochMs: Long,
+    val userDeclaredModelId: String = ModelIdentity.UNKNOWN,
+    val verifiedModelId: String = ModelIdentity.UNKNOWN,
 )
 
 data class WorkflowEvent(
@@ -169,7 +177,64 @@ data class ImportDraft(
     val roundNumber: Int,
     val body: String,
     val taskId: String?,
+    val userDeclaredModelId: String? = null,
 )
+
+object ModelIdentity {
+    const val UNKNOWN = "unknown"
+
+    fun declared(raw: String?): String {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty() || value.equals(UNKNOWN, ignoreCase = true)) return UNKNOWN
+        return value
+    }
+}
+
+enum class SessionState {
+    CREATED,
+    PLANNING,
+    INDEPENDENT_RESEARCH,
+    COLLECTING_RESPONSES,
+    PRELIMINARY_ANALYSIS,
+    CRITICAL_REVIEW,
+    REBUTTAL,
+    EVIDENCE_VERIFICATION,
+    REASSESSMENT,
+    SYNTHESIS,
+    COMPLETED,
+    AWAITING_USER_RESPONSE,
+    PAUSED,
+    BLOCKED,
+    CANCELLED,
+    FAILED,
+}
+
+enum class ParticipantRole {
+    MODERATOR,
+    RESEARCHER,
+    ANALYST,
+    DOMAIN_SPECIALIST,
+    DEVILS_ADVOCATE,
+    EVIDENCE_VERIFIER,
+    FINAL_SYNTHESIZER,
+}
+
+enum class QuestionComplexity {
+    LOW,
+    MODERATE,
+    HIGH,
+}
+
+enum class ConclusionKind {
+    PRELIMINARY,
+    FINAL,
+}
+
+enum class VerificationOutcome {
+    SUPPORTED,
+    CONTRADICTED,
+    INSUFFICIENT_EVIDENCE,
+}
 
 enum class ObjectionCategory {
     UNSUPPORTED_ASSUMPTION,

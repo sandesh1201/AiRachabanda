@@ -140,7 +140,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.3.0. This build is the Milestone 003 foundation. It does not send live AI requests.")
+                Text("Version 0.4.0. This build stores credentials with Android Keystore and keeps a local discussion workflow. It does not send live AI requests.")
             }
         }
     }

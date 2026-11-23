@@ -1,5 +1,6 @@
 package com.airachabanda.app.persistence
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -73,6 +74,27 @@ data class ResearchSessionEntity(
     val conversationId: String,
     val researchMode: String,
     val createdAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "'AWAITING_USER_RESPONSE'")
+    val state: String = "AWAITING_USER_RESPONSE",
+    @ColumnInfo(defaultValue = "''")
+    val question: String = "",
+    @ColumnInfo(defaultValue = "1")
+    val roundLimit: Int = 1,
+    @ColumnInfo(defaultValue = "0")
+    val requestBudget: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val requestsConsumed: Int = 0,
+    val deadlineEpochMs: Long? = null,
+    @ColumnInfo(defaultValue = "0")
+    val updatedAtEpochMs: Long = 0,
+    val resumeState: String? = null,
+    val awaitState: String? = null,
+    @ColumnInfo(defaultValue = "'MODERATE'")
+    val complexity: String = "MODERATE",
+    @ColumnInfo(defaultValue = "''")
+    val statusNote: String = "",
+    @ColumnInfo(defaultValue = "0")
+    val reviewRound: Int = 0,
 )
 
 @Entity(
@@ -97,6 +119,14 @@ data class ResearchTaskEntity(
     val prompt: String,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "'RESEARCHER'")
+    val role: String = "RESEARCHER",
+    @ColumnInfo(defaultValue = "'ASSISTED_RESEARCH'")
+    val kind: String = "ASSISTED_RESEARCH",
+    val participantId: String? = null,
+    @ColumnInfo(defaultValue = "0")
+    val automated: Boolean = false,
+    val targetId: String? = null,
 )
 
 @Entity(
@@ -121,6 +151,10 @@ data class ImportedResponseEntity(
     val userSupplied: Boolean,
     val authenticated: Boolean,
     val createdAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "'unknown'")
+    val userDeclaredModelId: String = "unknown",
+    @ColumnInfo(defaultValue = "'unknown'")
+    val verifiedModelId: String = "unknown",
 )
 
 @Entity(
@@ -185,6 +219,15 @@ interface CouncilDao {
 
     @Query("SELECT * FROM provider_configs WHERE providerId = :providerId")
     suspend fun findProvider(providerId: String): ProviderConfigEntity?
+
+    @Query("SELECT * FROM provider_configs")
+    suspend fun providerConfigs(): List<ProviderConfigEntity>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAtEpochMs ASC")
+    suspend fun messages(conversationId: String): List<MessageEntity>
+
+    @Query("SELECT * FROM research_tasks WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC")
+    suspend fun tasksForSession(sessionId: String): List<ResearchTaskEntity>
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertConversation(entity: ConversationEntity)
@@ -260,10 +303,23 @@ interface CouncilDao {
         ImportedResponseEntity::class,
         WorkflowEventEntity::class,
         AttachmentMetadataEntity::class,
+        ParticipantEntity::class,
+        ParticipantRoleEntity::class,
+        ModelIdentityEntity::class,
+        DiscussionRoundEntity::class,
+        ClaimEntity::class,
+        EvidenceReferenceEntity::class,
+        ObjectionEntity::class,
+        RebuttalEntity::class,
+        VerificationResultEntity::class,
+        ConclusionEntity::class,
+        WorkflowCheckpointEntity::class,
+        RequestBudgetEntryEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun councilDao(): CouncilDao
+    abstract fun discussionDao(): DiscussionDao
 }

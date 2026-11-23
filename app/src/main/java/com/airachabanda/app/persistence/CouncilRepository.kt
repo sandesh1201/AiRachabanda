@@ -8,6 +8,7 @@ import com.airachabanda.app.core.model.Conversation
 import com.airachabanda.app.core.model.ImportDraft
 import com.airachabanda.app.core.model.IntegrationMethod
 import com.airachabanda.app.core.model.MessageSource
+import com.airachabanda.app.core.model.ModelIdentity
 import com.airachabanda.app.core.model.ParticipationMode
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
@@ -16,6 +17,8 @@ import com.airachabanda.app.core.model.ResearchTask
 import com.airachabanda.app.core.model.WorkflowEvent
 import com.airachabanda.app.orchestration.ImportRules
 import com.airachabanda.app.provider.ProviderRegistry
+import com.airachabanda.app.security.CredentialAccounts
+import com.airachabanda.app.security.CredentialStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
@@ -24,6 +27,7 @@ class CouncilRepository(
     private val dao: CouncilDao,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val ids: () -> String = { UUID.randomUUID().toString() },
+    private val credentials: CredentialStore? = null,
 ) {
     fun observeConversations(): Flow<List<Conversation>> =
         dao.observeConversations().map { rows -> rows.map { it.toModel() } }
@@ -127,6 +131,9 @@ class CouncilRepository(
                 updatedAtEpochMs = clock(),
             ).toEntity(),
         )
+        if (choice == AccountChoice.NOT_CONFIGURED) {
+            credentials?.delete(providerId.name, CredentialAccounts.DEFAULT)
+        }
         dao.insertEvent(
             event(
                 conversationId = null,
@@ -189,6 +196,13 @@ class CouncilRepository(
             AssistedTaskState.DEFERRED -> "You deferred the assisted $name task. No response was invented."
             AssistedTaskState.AWAITING_USER_RESPONSE -> "The assisted $name task is waiting for your imported response."
             AssistedTaskState.COMPLETED -> return
+            AssistedTaskState.PENDING,
+            AssistedTaskState.READY,
+            AssistedTaskState.RUNNING,
+            AssistedTaskState.BLOCKED,
+            AssistedTaskState.CANCELLED,
+            AssistedTaskState.FAILED,
+            -> "The $name task is ${state.name}. No response was invented."
         }
         dao.insertEvent(
             event(
@@ -218,6 +232,8 @@ class CouncilRepository(
                 userSupplied = true,
                 authenticated = false,
                 createdAtEpochMs = now,
+                userDeclaredModelId = ModelIdentity.declared(draft.userDeclaredModelId),
+                verifiedModelId = ModelIdentity.UNKNOWN,
             ),
             message = MessageEntity(
                 id = messageId,
@@ -242,6 +258,7 @@ class CouncilRepository(
     }
 
     suspend fun deleteAllLocalContent() {
+        credentials?.deleteAll()
         dao.deleteConversations()
         dao.deleteEvents()
         dao.deleteProviderConfigs()

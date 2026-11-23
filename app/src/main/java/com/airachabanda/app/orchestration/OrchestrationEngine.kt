@@ -1,0 +1,983 @@
+package com.airachabanda.app.orchestration
+
+import com.airachabanda.app.core.model.AssistedTaskState
+import com.airachabanda.app.core.model.BillingEligibility
+import com.airachabanda.app.core.model.ConclusionKind
+import com.airachabanda.app.core.model.MessageSource
+import com.airachabanda.app.core.model.ModelIdentity
+import com.airachabanda.app.core.model.ObjectionCategory
+import com.airachabanda.app.core.model.ObjectionSeverity
+import com.airachabanda.app.core.model.ParticipantRole
+import com.airachabanda.app.core.model.ParticipationMode
+import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.core.model.QuestionComplexity
+import com.airachabanda.app.core.model.ResearchMode
+import com.airachabanda.app.core.model.ResolutionStatus
+import com.airachabanda.app.core.model.SessionState
+import com.airachabanda.app.core.model.VerificationOutcome
+import com.airachabanda.app.persistence.ClaimEntity
+import com.airachabanda.app.persistence.ConclusionEntity
+import com.airachabanda.app.persistence.CouncilDao
+import com.airachabanda.app.persistence.DiscussionDao
+import com.airachabanda.app.persistence.DiscussionRoundEntity
+import com.airachabanda.app.persistence.EvidenceReferenceEntity
+import com.airachabanda.app.persistence.MessageEntity
+import com.airachabanda.app.persistence.ModelIdentityEntity
+import com.airachabanda.app.persistence.ObjectionEntity
+import com.airachabanda.app.persistence.ParticipantEntity
+import com.airachabanda.app.persistence.ParticipantRoleEntity
+import com.airachabanda.app.persistence.RebuttalEntity
+import com.airachabanda.app.persistence.RequestBudgetEntryEntity
+import com.airachabanda.app.persistence.ResearchSessionEntity
+import com.airachabanda.app.persistence.ResearchTaskEntity
+import com.airachabanda.app.persistence.VerificationResultEntity
+import com.airachabanda.app.persistence.WorkflowCheckpointEntity
+import com.airachabanda.app.persistence.WorkflowEventEntity
+import com.airachabanda.app.provider.ProviderRegistry
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.UUID
+
+fun interface ParticipantSource {
+    suspend fun load(): List<EligibleParticipant>
+}
+
+class DatabaseParticipantSource(
+    private val dao: CouncilDao,
+) : ParticipantSource {
+    override suspend fun load(): List<EligibleParticipant> {
+        val rows = dao.providerConfigs()
+        return ProviderRegistry.all.mapNotNull { definition ->
+            val row = rows.firstOrNull { it.providerId == definition.id.name }
+            val participation = row?.participationMode?.let(ParticipationMode::valueOf)
+                ?: definition.defaultParticipation
+            val billing = row?.billingEligibility?.let(BillingEligibility::valueOf)
+                ?: definition.defaultBilling
+            when (participation) {
+                ParticipationMode.ASSISTED -> EligibleParticipant(definition.id, assisted = true, billing = billing)
+                ParticipationMode.AUTOMATED -> EligibleParticipant(definition.id, assisted = false, billing = billing)
+                ParticipationMode.UNAVAILABLE -> null
+            }
+        }
+    }
+}
+
+data class ResearchStart(
+    val conversationId: String,
+    val question: String,
+    val mode: ResearchMode,
+    val complexity: QuestionComplexity,
+    val requiredCapabilities: Set<String> = emptySet(),
+    val roundLimit: Int,
+    val requestBudget: Int,
+    val deadlineEpochMs: Long? = null,
+)
+
+data class SessionSnapshot(
+    val sessionId: String,
+    val state: SessionState,
+    val requestsConsumed: Int,
+    val reviewRound: Int,
+    val statusNote: String,
+)
+
+class OrchestrationEngine(
+    private val council: CouncilDao,
+    private val discussion: DiscussionDao,
+    private val participants: ParticipantSource,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val ids: () -> String = { UUID.randomUUID().toString() },
+) {
+    private val mutex = Mutex()
+
+    suspend fun acceptQuestion(start: ResearchStart): SessionSnapshot = mutex.withLock {
+        require(start.question.isNotBlank()) { "A research question is required." }
+        require(start.roundLimit in 1..8) { "Round limit must stay between 1 and 8." }
+        require(start.requestBudget >= 0) { "Request budget cannot be negative." }
+        require(council.conversation(start.conversationId) != null) { "Conversation not found." }
+        val now = clock()
+        val sessionId = ids()
+        val question = start.question.trim()
+        council.insertSession(
+            ResearchSessionEntity(
+                id = sessionId,
+                conversationId = start.conversationId,
+                researchMode = start.mode.name,
+                createdAtEpochMs = now,
+                state = SessionState.CREATED.name,
+                question = question,
+                roundLimit = start.roundLimit,
+                requestBudget = start.requestBudget,
+                deadlineEpochMs = start.deadlineEpochMs,
+                updatedAtEpochMs = now,
+                complexity = start.complexity.name,
+                statusNote = "Session created. No provider has been contacted.",
+            ),
+        )
+        checkpoint(sessionId, SessionState.CREATED, "Session created. No provider has been contacted.")
+        if (expired(fresh(sessionId))) {
+            return@withLock fail(sessionId, "The research deadline had already passed. No request was sent.")
+        }
+        move(sessionId, SessionState.PLANNING, "Planning participant roles.")
+        val eligible = select(participants.load())
+        if (eligible.isEmpty()) {
+            move(sessionId, SessionState.BLOCKED, "No eligible participant. No response was invented.")
+            return@withLock snapshot(sessionId)
+        }
+        val grants = RoleAssignment.assign(eligible, start.complexity, start.requiredCapabilities)
+        persistParticipants(sessionId, eligible, grants)
+        openRound(sessionId, 1)
+        grants.filter { it.role == ParticipantRole.RESEARCHER }.forEach { grant ->
+            val participant = participantFor(sessionId, grant.providerId)
+            createTask(
+                participant = participant,
+                role = ParticipantRole.RESEARCHER,
+                kind = KIND_RESEARCH,
+                prompt = question,
+                round = 1,
+                targetId = null,
+            )
+        }
+        enterCollection(sessionId)
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun advance(sessionId: String): SessionSnapshot = mutex.withLock {
+        guard(sessionId) ?: return@withLock snapshot(sessionId)
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun recordParticipantResponse(
+        sessionId: String,
+        taskId: String,
+        body: String,
+        userDeclaredModelId: String? = null,
+    ): SessionSnapshot = mutex.withLock {
+        val text = body.trim()
+        require(text.isNotEmpty()) { "A response body is required." }
+        val session = guard(sessionId) ?: return@withLock snapshot(sessionId)
+        val task = council.task(taskId) ?: throw IllegalArgumentException("Task not found.")
+        require(task.sessionId == sessionId) { "Task does not belong to this session." }
+        if (task.state !in OPEN_TASKS) return@withLock snapshot(sessionId)
+        val now = clock()
+        val messageId = ids()
+        council.insertMessage(
+            MessageEntity(
+                id = messageId,
+                conversationId = session.conversationId,
+                providerId = task.providerId,
+                source = MessageSource.USER_SUPPLIED_PROVIDER_ATTRIBUTED.name,
+                body = text,
+                roundNumber = task.roundNumber,
+                createdAtEpochMs = now,
+            ),
+        )
+        council.updateTaskState(taskId, AssistedTaskState.COMPLETED.name, now)
+        task.participantId?.let { participantId ->
+            discussion.updateDeclaredModel(participantId, ModelIdentity.declared(userDeclaredModelId))
+            discussion.insertClaim(
+                ClaimEntity(
+                    id = ids(),
+                    sessionId = sessionId,
+                    messageId = messageId,
+                    authorParticipantId = participantId,
+                    roundNumber = task.roundNumber,
+                    statement = text,
+                    createdAtEpochMs = now,
+                ),
+            )
+        }
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                providerId = task.providerId,
+                type = "RESPONSE_RECORDED",
+                summary = "A supplied response was recorded. AI Rachabanda did not contact the provider.",
+                createdAtEpochMs = now,
+            ),
+        )
+        val current = fresh(sessionId)
+        if (current.state == SessionState.AWAITING_USER_RESPONSE.name && current.awaitState != null) {
+            move(
+                sessionId,
+                SessionState.valueOf(current.awaitState),
+                "A supplied response was recorded.",
+                await = null,
+            )
+        }
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun recordClaim(
+        sessionId: String,
+        authorParticipantId: String,
+        statement: String,
+        evidence: List<Pair<String, String>> = emptyList(),
+    ): String = mutex.withLock {
+        val text = statement.trim()
+        require(text.isNotEmpty()) { "A claim needs a statement." }
+        if (guard(sessionId) == null) throw IllegalStateException("The session is not accepting claims.")
+        val claimId = ids()
+        val now = clock()
+        discussion.insertClaim(
+            ClaimEntity(
+                id = claimId,
+                sessionId = sessionId,
+                messageId = null,
+                authorParticipantId = authorParticipantId,
+                roundNumber = fresh(sessionId).reviewRound.coerceAtLeast(1),
+                statement = text,
+                createdAtEpochMs = now,
+            ),
+        )
+        evidence.forEach { (locator, note) ->
+            if (locator.isNotBlank()) {
+                discussion.insertEvidence(
+                    EvidenceReferenceEntity(
+                        id = ids(),
+                        claimId = claimId,
+                        locator = locator.trim(),
+                        note = note.trim(),
+                        createdAtEpochMs = now,
+                    ),
+                )
+            }
+        }
+        claimId
+    }
+
+    suspend fun recordObjection(
+        sessionId: String,
+        targetClaimId: String,
+        authorParticipantId: String,
+        category: ObjectionCategory,
+        severity: ObjectionSeverity,
+        explanation: String,
+        supportingEvidence: String,
+        requestedVerification: String,
+        userDeclaredModelId: String? = null,
+    ): String = mutex.withLock {
+        require(explanation.isNotBlank()) { "An objection needs an explanation." }
+        if (guard(sessionId) == null) throw IllegalStateException("The session is not accepting objections.")
+        require(discussion.claim(targetClaimId)?.sessionId == sessionId) { "Claim not found in this session." }
+        val id = ids()
+        discussion.insertObjection(
+            ObjectionEntity(
+                id = id,
+                sessionId = sessionId,
+                targetClaimId = targetClaimId,
+                authorParticipantId = authorParticipantId,
+                userDeclaredModelId = ModelIdentity.declared(userDeclaredModelId),
+                verifiedModelId = ModelIdentity.UNKNOWN,
+                roundNumber = fresh(sessionId).reviewRound.coerceAtLeast(1),
+                category = category.name,
+                severity = severity.name,
+                explanation = explanation.trim(),
+                supportingEvidence = supportingEvidence.trim(),
+                requestedVerification = requestedVerification.trim(),
+                resolution = ResolutionStatus.OPEN.name,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        id
+    }
+
+    suspend fun continueReview(sessionId: String): SessionSnapshot = mutex.withLock {
+        val session = guard(sessionId) ?: return@withLock snapshot(sessionId)
+        if (session.state !in setOf(SessionState.CRITICAL_REVIEW.name, SessionState.AWAITING_USER_RESPONSE.name, SessionState.REBUTTAL.name, SessionState.EVIDENCE_VERIFICATION.name)) {
+            note(sessionId, "Critical review cannot continue from ${session.state}.")
+            return@withLock snapshot(sessionId)
+        }
+        val critiqueOpen = council.tasksForSession(sessionId).any {
+            it.kind == KIND_CRITIQUE && it.roundNumber == session.reviewRound && it.state in OPEN_TASKS
+        }
+        if (critiqueOpen) {
+            note(sessionId, "Critical review is still waiting on a participant.")
+            return@withLock snapshot(sessionId)
+        }
+        val unresolved = discussion.objections(sessionId).filter { it.resolution in UNRESOLVED }
+        val needsRebuttal = unresolved.filter { discussion.rebuttals(it.id).isEmpty() }
+        if (needsRebuttal.isNotEmpty()) {
+            needsRebuttal.forEach { objection ->
+                val claim = discussion.claim(objection.targetClaimId) ?: return@forEach
+                val author = discussion.participants(sessionId).first { it.id == claim.authorParticipantId }
+                createTask(
+                    participant = author,
+                    role = ParticipantRole.RESEARCHER,
+                    kind = KIND_REBUTTAL,
+                    prompt = "Respond to objection ${objection.id}. Use evidence. Do not invent citations. Objection: ${objection.explanation}",
+                    round = session.reviewRound,
+                    targetId = objection.id,
+                )
+            }
+            move(sessionId, SessionState.REBUTTAL, "Rebuttals were requested for open objections.")
+            pump(sessionId)
+            return@withLock snapshot(sessionId)
+        }
+        val verifier = roleParticipant(sessionId, ParticipantRole.EVIDENCE_VERIFIER)
+        val verificationOpen = council.tasksForSession(sessionId).any { it.kind == KIND_VERIFICATION && it.state in OPEN_TASKS }
+        val verificationDone = discussion.verifications(sessionId).isNotEmpty()
+        if (verifier != null && !verificationDone && !verificationOpen && discussion.claims(sessionId).isNotEmpty()) {
+            createTask(
+                participant = verifier,
+                role = ParticipantRole.EVIDENCE_VERIFIER,
+                kind = KIND_VERIFICATION,
+                prompt = "Check the recorded claims and objections against their evidence. Do not invent sources.",
+                round = session.reviewRound,
+                targetId = null,
+            )
+            move(sessionId, SessionState.EVIDENCE_VERIFICATION, "Evidence verification was requested.")
+            pump(sessionId)
+            return@withLock snapshot(sessionId)
+        }
+        if (session.state != SessionState.REASSESSMENT.name) {
+            move(sessionId, SessionState.REASSESSMENT, "The review round is ready for reassessment.")
+        }
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun recordRebuttal(
+        sessionId: String,
+        objectionId: String,
+        body: String,
+        resolution: ResolutionStatus? = null,
+    ): SessionSnapshot = mutex.withLock {
+        val text = body.trim()
+        require(text.isNotEmpty()) { "A rebuttal needs text." }
+        val session = guard(sessionId) ?: return@withLock snapshot(sessionId)
+        val objection = discussion.objection(objectionId)
+        require(objection?.sessionId == sessionId) { "Objection not found in this session." }
+        val author = discussion.claim(objection.targetClaimId)?.authorParticipantId
+            ?: throw IllegalArgumentException("Claim author not found.")
+        discussion.insertRebuttal(
+            RebuttalEntity(
+                id = ids(),
+                objectionId = objectionId,
+                authorParticipantId = author,
+                body = text,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        if (resolution != null) {
+            discussion.updateObjectionResolution(objectionId, resolution.name)
+        }
+        council.tasksForSession(sessionId)
+            .filter { it.kind == KIND_REBUTTAL && it.targetId == objectionId && it.state in OPEN_TASKS }
+            .forEach { council.updateTaskState(it.id, AssistedTaskState.COMPLETED.name, clock()) }
+        if (session.state == SessionState.AWAITING_USER_RESPONSE.name && session.awaitState == SessionState.REBUTTAL.name) {
+            move(sessionId, SessionState.REBUTTAL, "A rebuttal was recorded. The original objection was kept.")
+        }
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun recordVerification(
+        sessionId: String,
+        verifierParticipantId: String,
+        outcome: VerificationOutcome,
+        note: String,
+        targetClaimId: String? = null,
+        objectionId: String? = null,
+    ): SessionSnapshot = mutex.withLock {
+        guard(sessionId) ?: return@withLock snapshot(sessionId)
+        discussion.insertVerification(
+            VerificationResultEntity(
+                id = ids(),
+                sessionId = sessionId,
+                targetClaimId = targetClaimId,
+                objectionId = objectionId,
+                verifierParticipantId = verifierParticipantId,
+                outcome = outcome.name,
+                note = note.trim(),
+                createdAtEpochMs = clock(),
+            ),
+        )
+        council.tasksForSession(sessionId)
+            .filter { it.kind == KIND_VERIFICATION && it.state in OPEN_TASKS }
+            .forEach { council.updateTaskState(it.id, AssistedTaskState.COMPLETED.name, clock()) }
+        val session = fresh(sessionId)
+        if (session.state == SessionState.AWAITING_USER_RESPONSE.name && session.awaitState == SessionState.EVIDENCE_VERIFICATION.name) {
+            move(sessionId, SessionState.EVIDENCE_VERIFICATION, "A verification result was recorded.")
+        }
+        if (fresh(sessionId).state == SessionState.EVIDENCE_VERIFICATION.name) {
+            move(sessionId, SessionState.REASSESSMENT, "Verification finished. The result is stored separately from the original claims.")
+        }
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun recordPreliminaryConclusion(sessionId: String, body: String): SessionSnapshot = mutex.withLock {
+        val text = body.trim()
+        require(text.isNotEmpty()) { "A conclusion needs text." }
+        val session = guard(sessionId) ?: return@withLock snapshot(sessionId)
+        discussion.insertConclusion(
+            ConclusionEntity(
+                id = ids(),
+                sessionId = sessionId,
+                kind = ConclusionKind.PRELIMINARY.name,
+                body = text,
+                roundNumber = session.reviewRound,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        note(sessionId, "A preliminary conclusion was added. Earlier conclusions were kept.")
+        snapshot(sessionId)
+    }
+
+    suspend fun recordFinalConclusion(sessionId: String, body: String): SessionSnapshot = mutex.withLock {
+        val text = body.trim()
+        require(text.isNotEmpty()) { "A final conclusion needs text." }
+        val session = guard(sessionId) ?: return@withLock snapshot(sessionId)
+        discussion.insertConclusion(
+            ConclusionEntity(
+                id = ids(),
+                sessionId = sessionId,
+                kind = ConclusionKind.FINAL.name,
+                body = text,
+                roundNumber = session.reviewRound,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        council.tasksForSession(sessionId)
+            .filter { it.kind == KIND_SYNTHESIS && it.state in OPEN_TASKS }
+            .forEach { council.updateTaskState(it.id, AssistedTaskState.COMPLETED.name, clock()) }
+        if (session.state != SessionState.COMPLETED.name) {
+            move(sessionId, SessionState.COMPLETED, "Final conclusion recorded. Objections and earlier conclusions were kept.")
+        }
+        snapshot(sessionId)
+    }
+
+    suspend fun routeFollowUp(sessionId: String, providerId: ProviderId, question: String): SessionSnapshot = mutex.withLock {
+        val text = question.trim()
+        require(text.isNotEmpty()) { "A follow-up question is required." }
+        val session = guard(sessionId) ?: return@withLock snapshot(sessionId)
+        val collecting = session.state == SessionState.INDEPENDENT_RESEARCH.name ||
+            session.state == SessionState.COLLECTING_RESPONSES.name ||
+            (session.state == SessionState.AWAITING_USER_RESPONSE.name && session.awaitState == SessionState.INDEPENDENT_RESEARCH.name)
+        if (!collecting) {
+            note(sessionId, "A follow-up was not created outside research collection.")
+            return@withLock snapshot(sessionId)
+        }
+        val roundCount = discussion.rounds(sessionId).size
+        if (roundCount >= session.roundLimit) {
+            note(sessionId, "A follow-up was not created because the round limit has been reached.")
+            return@withLock snapshot(sessionId)
+        }
+        val nextRound = roundCount + 1
+        openRound(sessionId, nextRound)
+        createTask(
+            participant = participantFor(sessionId, providerId),
+            role = ParticipantRole.RESEARCHER,
+            kind = KIND_FOLLOW_UP,
+            prompt = text,
+            round = nextRound,
+            targetId = null,
+        )
+        if (session.state != SessionState.COLLECTING_RESPONSES.name) {
+            move(sessionId, SessionState.COLLECTING_RESPONSES, "A follow-up question was routed. Other participants were not cancelled.")
+        }
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun pause(sessionId: String): SessionSnapshot = mutex.withLock {
+        val session = fresh(sessionId)
+        val state = SessionState.valueOf(session.state)
+        if (state in SessionTransitions.terminal || state == SessionState.PAUSED) return@withLock snapshot(sessionId)
+        move(sessionId, SessionState.PAUSED, "Session paused.", await = session.awaitState, resume = session.state)
+        snapshot(sessionId)
+    }
+
+    suspend fun resume(sessionId: String): SessionSnapshot = mutex.withLock {
+        val session = fresh(sessionId)
+        if (session.state != SessionState.PAUSED.name) return@withLock snapshot(sessionId)
+        if (expired(session)) {
+            return@withLock fail(sessionId, "The research deadline passed while the session was paused. No answer was invented.")
+        }
+        val target = session.resumeState?.let(SessionState::valueOf) ?: SessionState.AWAITING_USER_RESPONSE
+        move(sessionId, target, "Session resumed.", await = session.awaitState, resume = session.resumeState)
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun cancel(sessionId: String): SessionSnapshot = mutex.withLock {
+        val session = fresh(sessionId)
+        if (SessionState.valueOf(session.state) in SessionTransitions.terminal) return@withLock snapshot(sessionId)
+        cancelOpenTasks(sessionId, AssistedTaskState.CANCELLED)
+        move(sessionId, SessionState.CANCELLED, "Session cancelled. No further requests will be prepared.")
+        snapshot(sessionId)
+    }
+
+    private suspend fun enterCollection(sessionId: String) {
+        val tasks = council.tasksForSession(sessionId)
+        val automatedOpen = tasks.any { it.automated && it.state in OPEN_TASKS }
+        val assistedOpen = tasks.any { !it.automated && it.state in OPEN_TASKS }
+        when {
+            automatedOpen -> move(
+                sessionId,
+                SessionState.INDEPENDENT_RESEARCH,
+                "Independent research started. An assisted participant does not block an automated participant.",
+            )
+            assistedOpen -> move(
+                sessionId,
+                SessionState.AWAITING_USER_RESPONSE,
+                "Waiting for assisted research. No response was invented.",
+                await = SessionState.INDEPENDENT_RESEARCH.name,
+            )
+            else -> move(sessionId, SessionState.BLOCKED, "No research task could be started.")
+        }
+    }
+
+    private suspend fun pump(sessionId: String) {
+        repeat(MAX_STEPS) {
+            val session = fresh(sessionId)
+            val state = SessionState.valueOf(session.state)
+            if (state in SessionTransitions.terminal || state == SessionState.PAUSED || state == SessionState.BLOCKED) return
+            if (expired(session)) {
+                fail(sessionId, "The research deadline passed. Open tasks were cancelled. No answer was invented.")
+                return
+            }
+            if (!step(session)) return
+        }
+    }
+
+    private suspend fun step(session: ResearchSessionEntity): Boolean {
+        return when (SessionState.valueOf(session.state)) {
+            SessionState.INDEPENDENT_RESEARCH, SessionState.COLLECTING_RESPONSES -> progressCollection(session)
+            SessionState.PRELIMINARY_ANALYSIS -> openCritiqueOrSynthesis(session)
+            SessionState.CRITICAL_REVIEW -> progressWaiting(session, KIND_CRITIQUE, SessionState.CRITICAL_REVIEW)
+            SessionState.REBUTTAL -> progressWaiting(session, KIND_REBUTTAL, SessionState.REBUTTAL)
+            SessionState.EVIDENCE_VERIFICATION -> progressWaiting(session, KIND_VERIFICATION, SessionState.EVIDENCE_VERIFICATION)
+            SessionState.REASSESSMENT -> progressReassessment(session)
+            SessionState.SYNTHESIS -> progressWaiting(session, KIND_SYNTHESIS, SessionState.SYNTHESIS)
+            else -> false
+        }
+    }
+
+    private suspend fun progressCollection(session: ResearchSessionEntity): Boolean {
+        val tasks = council.tasksForSession(session.id).filter { it.kind in COLLECTION_KINDS }
+        val open = tasks.filter { it.state in OPEN_TASKS }
+        val automatedOpen = open.any { it.automated }
+        val assistedOpen = open.any { !it.automated }
+        return when {
+            automatedOpen && session.state != SessionState.INDEPENDENT_RESEARCH.name -> {
+                move(session.id, SessionState.INDEPENDENT_RESEARCH, "Automated research can continue while an assisted participant is still waiting.")
+                true
+            }
+            !automatedOpen && assistedOpen && session.state != SessionState.AWAITING_USER_RESPONSE.name -> {
+                move(
+                    session.id,
+                    SessionState.AWAITING_USER_RESPONSE,
+                    "Waiting for an assisted participant. No automated participant is ready, and no response was invented.",
+                    await = SessionState.INDEPENDENT_RESEARCH.name,
+                )
+                true
+            }
+            open.isEmpty() && tasks.isNotEmpty() && session.state != SessionState.PRELIMINARY_ANALYSIS.name -> {
+                move(session.id, SessionState.PRELIMINARY_ANALYSIS, "Research tasks are complete. No conclusion has been written yet.")
+                true
+            }
+            else -> false
+        }
+    }
+
+    private suspend fun openCritiqueOrSynthesis(session: ResearchSessionEntity): Boolean {
+        val roles = allRoles(session.id)
+        if (roles.any { it.role == ParticipantRole.DEVILS_ADVOCATE.name }) {
+            if (session.reviewRound == 0) setReviewRound(session.id, 1)
+            ensureCritiqueTasks(fresh(session.id))
+            move(
+                session.id,
+                SessionState.CRITICAL_REVIEW,
+                "Critical review is open. This critique is not independent verification unless a different verified model identity is on record.",
+            )
+            return true
+        }
+        if (roles.any { it.role == ParticipantRole.FINAL_SYNTHESIZER.name }) {
+            ensureSynthesisTask(fresh(session.id))
+            move(session.id, SessionState.SYNTHESIS, "Synthesis is ready. No final answer has been written.")
+            return true
+        }
+        move(session.id, SessionState.COMPLETED, "No critique or synthesis role was assigned.")
+        return true
+    }
+
+    private suspend fun progressWaiting(
+        session: ResearchSessionEntity,
+        kind: String,
+        workState: SessionState,
+    ): Boolean {
+        val tasks = council.tasksForSession(session.id).filter { it.kind == kind }
+        val open = tasks.filter { it.state in OPEN_TASKS }
+        val automatedOpen = open.any { it.automated }
+        if (automatedOpen) return false
+        if (open.isNotEmpty() && session.state != SessionState.AWAITING_USER_RESPONSE.name) {
+            move(
+                session.id,
+                SessionState.AWAITING_USER_RESPONSE,
+                "Waiting for an assisted $kind task. No response was invented.",
+                await = workState.name,
+            )
+            return true
+        }
+        return false
+    }
+
+    private suspend fun progressReassessment(session: ResearchSessionEntity): Boolean {
+        val unresolved = discussion.objections(session.id).any { it.resolution in UNRESOLVED }
+        if (unresolved && session.reviewRound < session.roundLimit) {
+            val next = session.reviewRound + 1
+            setReviewRound(session.id, next)
+            openRound(session.id, next)
+            ensureCritiqueTasks(fresh(session.id))
+            move(
+                session.id,
+                SessionState.CRITICAL_REVIEW,
+                "Another critical review round started because objections remain and the round limit allows it.",
+            )
+            return true
+        }
+        if (allRoles(session.id).any { it.role == ParticipantRole.FINAL_SYNTHESIZER.name }) {
+            ensureSynthesisTask(fresh(session.id))
+            move(
+                session.id,
+                SessionState.SYNTHESIS,
+                "Reassessment stopped. Unresolved objections are preserved. No final answer was invented.",
+            )
+            return true
+        }
+        move(session.id, SessionState.COMPLETED, "Reassessment stopped at the round limit. No final synthesizer was assigned.")
+        return true
+    }
+
+    private suspend fun ensureCritiqueTasks(session: ResearchSessionEntity) {
+        val existing = council.tasksForSession(session.id).any {
+            it.kind == KIND_CRITIQUE && it.roundNumber == session.reviewRound
+        }
+        if (existing) return
+        val advocate = roleParticipant(session.id, ParticipantRole.DEVILS_ADVOCATE) ?: return
+        val messages = council.messages(session.conversationId).map { entity ->
+            com.airachabanda.app.core.model.ChatMessage(
+                id = entity.id,
+                conversationId = entity.conversationId,
+                providerId = entity.providerId?.let(ProviderId::valueOf),
+                source = MessageSource.valueOf(entity.source),
+                body = entity.body,
+                roundNumber = entity.roundNumber,
+                createdAtEpochMs = entity.createdAtEpochMs,
+            )
+        }
+        val prompt = if (messages.any { it.source != MessageSource.USER && it.body.isNotBlank() }) {
+            CritiquePrompt.prepare(
+                reviewerName = ProviderRegistry.definition(ProviderId.valueOf(advocate.providerId)).displayName,
+                modeLabel = session.researchMode,
+                roundNumber = session.reviewRound,
+                messages = messages,
+                disclosure = "This critique is assisted. No underlying model identity is on record, so it is not independent verification.",
+            )
+        } else {
+            "Critique the recorded claims in this session. Do not invent evidence, citations, or a confidence percentage."
+        }
+        createTask(
+            participant = advocate,
+            role = ParticipantRole.DEVILS_ADVOCATE,
+            kind = KIND_CRITIQUE,
+            prompt = prompt,
+            round = session.reviewRound.coerceAtLeast(1),
+            targetId = null,
+        )
+    }
+
+    private suspend fun ensureSynthesisTask(session: ResearchSessionEntity) {
+        val existing = council.tasksForSession(session.id).any { it.kind == KIND_SYNTHESIS }
+        if (existing) return
+        val synthesizer = roleParticipant(session.id, ParticipantRole.FINAL_SYNTHESIZER) ?: return
+        createTask(
+            participant = synthesizer,
+            role = ParticipantRole.FINAL_SYNTHESIZER,
+            kind = KIND_SYNTHESIS,
+            prompt = "Prepare a final synthesis from the recorded claims, objections, rebuttals, and verification results. Keep unresolved objections. Do not invent evidence or a confidence percentage.",
+            round = session.reviewRound.coerceAtLeast(1),
+            targetId = null,
+        )
+    }
+
+    private suspend fun createTask(
+        participant: ParticipantEntity,
+        role: ParticipantRole,
+        kind: String,
+        prompt: String,
+        round: Int,
+        targetId: String?,
+    ) {
+        val session = fresh(participant.sessionId)
+        val automated = participant.participationMode == ParticipationMode.AUTOMATED.name &&
+            ZeroCostPolicy.automatedInferenceAllowed(
+                ProviderId.valueOf(participant.providerId),
+                BillingEligibility.valueOf(participant.billingEligibility),
+            )
+        var state = if (automated) AssistedTaskState.READY else AssistedTaskState.AWAITING_USER_RESPONSE
+        var markAutomated = false
+        if (participant.participationMode == ParticipationMode.AUTOMATED.name) {
+            if (!automated || session.requestsConsumed >= session.requestBudget) {
+                state = AssistedTaskState.BLOCKED
+            } else {
+                val consumed = session.requestsConsumed + 1
+                discussion.consumeBudget(
+                    RequestBudgetEntryEntity(
+                        id = ids(),
+                        sessionId = session.id,
+                        participantId = participant.id,
+                        amount = 1,
+                        reason = "Reserved one automated request for $kind.",
+                        createdAtEpochMs = clock(),
+                    ),
+                    consumed = consumed,
+                    updatedAt = clock(),
+                )
+                markAutomated = true
+            }
+        }
+        val now = clock()
+        council.insertTask(
+            ResearchTaskEntity(
+                id = ids(),
+                sessionId = session.id,
+                conversationId = session.conversationId,
+                providerId = participant.providerId,
+                roundNumber = round,
+                state = state.name,
+                prompt = prompt,
+                createdAtEpochMs = now,
+                updatedAtEpochMs = now,
+                role = role.name,
+                kind = kind,
+                participantId = participant.id,
+                automated = markAutomated,
+                targetId = targetId,
+            ),
+        )
+    }
+
+    private fun select(raw: List<EligibleParticipant>): List<EligibleParticipant> =
+        raw.mapNotNull { candidate ->
+            val automated = !candidate.assisted &&
+                ZeroCostPolicy.automatedInferenceAllowed(candidate.providerId, candidate.billing)
+            when {
+                candidate.assisted -> candidate
+                automated -> candidate
+                else -> null
+            }
+        }.distinctBy { it.providerId }
+
+    private suspend fun persistParticipants(
+        sessionId: String,
+        eligible: List<EligibleParticipant>,
+        grants: List<RoleGrant>,
+    ) {
+        val now = clock()
+        eligible.forEach { candidate ->
+            val participantId = ids()
+            val mode = if (candidate.assisted) ParticipationMode.ASSISTED else ParticipationMode.AUTOMATED
+            discussion.insertParticipant(
+                ParticipantEntity(
+                    id = participantId,
+                    sessionId = sessionId,
+                    providerId = candidate.providerId.name,
+                    participationMode = mode.name,
+                    billingEligibility = candidate.billing.name,
+                    createdAtEpochMs = now,
+                ),
+            )
+            discussion.insertModelIdentity(
+                ModelIdentityEntity(
+                    id = ids(),
+                    participantId = participantId,
+                    providerId = candidate.providerId.name,
+                    userDeclaredModelId = ModelIdentity.UNKNOWN,
+                    verifiedModelId = ModelIdentity.UNKNOWN,
+                    independentlyVerified = false,
+                    createdAtEpochMs = now,
+                ),
+            )
+            grants.filter { it.providerId == candidate.providerId }.forEach { grant ->
+                discussion.insertRole(
+                    ParticipantRoleEntity(
+                        id = ids(),
+                        participantId = participantId,
+                        role = grant.role.name,
+                        reason = grant.reason,
+                        createdAtEpochMs = now,
+                    ),
+                )
+            }
+        }
+    }
+
+    private suspend fun participantFor(sessionId: String, providerId: ProviderId): ParticipantEntity =
+        discussion.participants(sessionId).first { it.providerId == providerId.name }
+
+    private suspend fun roleParticipant(sessionId: String, role: ParticipantRole): ParticipantEntity? {
+        val people = discussion.participants(sessionId)
+        return people.firstOrNull { participant ->
+            discussion.roles(participant.id).any { it.role == role.name }
+        }
+    }
+
+    private suspend fun allRoles(sessionId: String): List<ParticipantRoleEntity> =
+        discussion.participants(sessionId).flatMap { discussion.roles(it.id) }
+
+    private suspend fun openRound(sessionId: String, roundNumber: Int) {
+        if (discussion.rounds(sessionId).any { it.roundNumber == roundNumber }) return
+        discussion.insertRound(
+            DiscussionRoundEntity(
+                id = ids(),
+                sessionId = sessionId,
+                roundNumber = roundNumber,
+                state = "OPEN",
+                openedAtEpochMs = clock(),
+                closedAtEpochMs = null,
+            ),
+        )
+    }
+
+    private suspend fun guard(sessionId: String): ResearchSessionEntity? {
+        val session = fresh(sessionId)
+        val state = SessionState.valueOf(session.state)
+        if (state == SessionState.PAUSED) {
+            note(sessionId, "The session is paused.")
+            return null
+        }
+        if (state in SessionTransitions.terminal || state == SessionState.BLOCKED) return null
+        if (expired(session)) {
+            fail(sessionId, "The research deadline passed. Open tasks were cancelled. No answer was invented.")
+            return null
+        }
+        return fresh(sessionId)
+    }
+
+    private suspend fun fail(sessionId: String, message: String): SessionSnapshot {
+        val state = SessionState.valueOf(fresh(sessionId).state)
+        if (state !in SessionTransitions.terminal) {
+            cancelOpenTasks(sessionId, AssistedTaskState.FAILED)
+            move(sessionId, SessionState.FAILED, message)
+        }
+        return snapshot(sessionId)
+    }
+
+    private suspend fun cancelOpenTasks(sessionId: String, state: AssistedTaskState) {
+        council.tasksForSession(sessionId)
+            .filter { it.state in OPEN_TASKS }
+            .forEach { council.updateTaskState(it.id, state.name, clock()) }
+    }
+
+    private suspend fun move(
+        sessionId: String,
+        to: SessionState,
+        message: String,
+        await: String? = null,
+        resume: String? = null,
+    ) {
+        val session = fresh(sessionId)
+        val from = SessionState.valueOf(session.state)
+        check(SessionTransitions.permits(from, to)) { "Cannot move from $from to $to." }
+        discussion.updateSessionProgress(
+            id = sessionId,
+            state = to.name,
+            resumeState = resume ?: session.resumeState,
+            awaitState = await,
+            requestsConsumed = session.requestsConsumed,
+            reviewRound = session.reviewRound,
+            statusNote = message,
+            updatedAt = clock(),
+        )
+        checkpoint(sessionId, to, message)
+    }
+
+    private suspend fun note(sessionId: String, message: String) {
+        val session = fresh(sessionId)
+        discussion.updateSessionProgress(
+            id = sessionId,
+            state = session.state,
+            resumeState = session.resumeState,
+            awaitState = session.awaitState,
+            requestsConsumed = session.requestsConsumed,
+            reviewRound = session.reviewRound,
+            statusNote = message,
+            updatedAt = clock(),
+        )
+    }
+
+    private suspend fun setReviewRound(sessionId: String, round: Int) {
+        val session = fresh(sessionId)
+        discussion.updateSessionProgress(
+            id = sessionId,
+            state = session.state,
+            resumeState = session.resumeState,
+            awaitState = session.awaitState,
+            requestsConsumed = session.requestsConsumed,
+            reviewRound = round,
+            statusNote = session.statusNote,
+            updatedAt = clock(),
+        )
+    }
+
+    private suspend fun checkpoint(sessionId: String, state: SessionState, message: String) {
+        discussion.insertCheckpoint(
+            WorkflowCheckpointEntity(
+                id = ids(),
+                sessionId = sessionId,
+                sessionState = state.name,
+                note = message,
+                createdAtEpochMs = clock(),
+            ),
+        )
+    }
+
+    private suspend fun fresh(sessionId: String): ResearchSessionEntity =
+        discussion.session(sessionId) ?: throw IllegalArgumentException("Session not found.")
+
+    private fun expired(session: ResearchSessionEntity): Boolean {
+        val deadline = session.deadlineEpochMs ?: return false
+        return clock() > deadline
+    }
+
+    private suspend fun snapshot(sessionId: String): SessionSnapshot {
+        val session = fresh(sessionId)
+        return SessionSnapshot(
+            sessionId = session.id,
+            state = SessionState.valueOf(session.state),
+            requestsConsumed = session.requestsConsumed,
+            reviewRound = session.reviewRound,
+            statusNote = session.statusNote,
+        )
+    }
+
+    private companion object {
+        const val KIND_RESEARCH = "RESEARCH"
+        const val KIND_FOLLOW_UP = "FOLLOW_UP"
+        const val KIND_CRITIQUE = "CRITIQUE"
+        const val KIND_REBUTTAL = "REBUTTAL"
+        const val KIND_VERIFICATION = "VERIFICATION"
+        const val KIND_SYNTHESIS = "SYNTHESIS"
+        const val MAX_STEPS = 8
+        val COLLECTION_KINDS = setOf(KIND_RESEARCH, KIND_FOLLOW_UP, "ASSISTED_RESEARCH")
+        val OPEN_TASKS = setOf(
+            AssistedTaskState.PENDING.name,
+            AssistedTaskState.READY.name,
+            AssistedTaskState.RUNNING.name,
+            AssistedTaskState.AWAITING_USER_RESPONSE.name,
+            AssistedTaskState.DEFERRED.name,
+        )
+        val UNRESOLVED = setOf(
+            ResolutionStatus.OPEN.name,
+            ResolutionStatus.UNRESOLVED.name,
+            ResolutionStatus.INSUFFICIENT_EVIDENCE.name,
+        )
+    }
+}

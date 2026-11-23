@@ -432,10 +432,16 @@ private fun MessageSource.label(): String = when (this) {
 }
 
 private fun AssistedTaskState.label(): String = when (this) {
+    AssistedTaskState.PENDING -> "Pending"
+    AssistedTaskState.READY -> "Ready"
+    AssistedTaskState.RUNNING -> "Running"
     AssistedTaskState.AWAITING_USER_RESPONSE -> "Waiting for your response"
     AssistedTaskState.COMPLETED -> "Response imported"
     AssistedTaskState.SKIPPED -> "Skipped"
     AssistedTaskState.DEFERRED -> "Deferred"
+    AssistedTaskState.BLOCKED -> "Blocked"
+    AssistedTaskState.CANCELLED -> "Cancelled"
+    AssistedTaskState.FAILED -> "Failed"
 }
 
 @Composable
