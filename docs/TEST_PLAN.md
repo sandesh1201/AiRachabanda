@@ -18,9 +18,25 @@ Repository tests cover conversation rename and delete, a declared paid plan that
 
 Credential tests use synthetic secrets. They cover AES-256-GCM encryption, a new initialization vector on replacement, deletion, provider isolation, a restart against the same key and files, tampered ciphertext, a missing key, and concurrent replacement. A Robolectric check confirms the Android Keystore key specification is 256-bit AES-GCM and does not require biometric or device-unlock authentication. The unit tests drive the production envelope through an in-memory key source. They do not call the AndroidKeyStore provider.
 
-Migration tests open a version 1 database that already contains a conversation, message, assisted task, and imported response. After migration, those rows remain, model identity columns are `unknown`, and the discussion tables exist. Room rejects the database if the migrated schema does not match version 2. Production does not use a destructive migration fallback.
+Migration tests open a version 1 database that already contains a conversation, message, assisted task, and imported response. After migration through version 3, those rows remain, model identity columns are `unknown`, and the discussion tables, including `protocol_actions`, exist. Room rejects the database if the migrated schema does not match. Production does not use a destructive migration fallback.
 
 Orchestration tests cover role assignment from complexity and an added critique capability, an automated participant that proceeds while an assisted participant is waiting, ChatGPT remaining ineligible for automated budget use, a two-round critique that stops at the round limit and preserves an open objection, and pause, resume, cancel, deadline, and follow-up limits.
+
+Council workflow tests cover the assisted path from the same engine the Council screen uses: start, import, critique, an open objection, a rebuttal request, pause, resume, and recovery from a closed database. They also check that two hosts of the same verified model are not treated as independent reviewers, that an unknown model stays unknown, that research tasks leave automated capacity for review and synthesis, and that a protocol action cannot increase the request budget.
+
+## Device checks for Milestone 004A
+
+On the same Pixel 9a guest, with the 0.4.1 debug build installed:
+
+- `wm size` reports physical 1080×2424 and no override.
+- `wm density` reports physical 420 and no override.
+- The conversation titled "Milestone 004A test" is created in History and opened in portrait.
+- Start discussion assigns Claude and shows that only assisted providers are available.
+- An imported test response and an imported test critique are labeled user-supplied and not authenticated.
+- One objection stays unresolved after a rebuttal is requested.
+- Pause and resume keep that objection.
+- After the process is stopped and the app is opened again, the same stage, roles, pending task, and unresolved objection are still on screen.
+- This pass uses typed test text. It is not live AI research.
 
 ## Device checks for Milestone 004
 

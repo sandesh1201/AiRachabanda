@@ -71,6 +71,8 @@ data class ResearchStart(
     val roundLimit: Int,
     val requestBudget: Int,
     val deadlineEpochMs: Long? = null,
+    val knownQuotas: Map<ProviderId, Int?> = emptyMap(),
+    val excludedProviders: Set<ProviderId> = emptySet(),
 )
 
 data class SessionSnapshot(
@@ -119,12 +121,32 @@ class OrchestrationEngine(
             return@withLock fail(sessionId, "The research deadline had already passed. No request was sent.")
         }
         move(sessionId, SessionState.PLANNING, "Planning participant roles.")
-        val eligible = select(participants.load())
+        val eligible = select(participants.load()).filter { it.providerId !in start.excludedProviders }
         if (eligible.isEmpty()) {
             move(sessionId, SessionState.BLOCKED, "No eligible participant. No response was invented.")
             return@withLock snapshot(sessionId)
         }
-        val grants = RoleAssignment.assign(eligible, start.complexity, start.requiredCapabilities)
+        val capabilities = start.requiredCapabilities.toMutableSet()
+        val assistedAvailable = eligible.any { it.assisted }
+        when (start.mode) {
+            ResearchMode.STANDARD -> capabilities += RoleAssignment.CRITIQUE
+            ResearchMode.DEEP_RESEARCH -> {
+                capabilities += RoleAssignment.CRITIQUE
+                capabilities += RoleAssignment.VERIFICATION
+            }
+            ResearchMode.QUICK -> if (assistedAvailable || start.requestBudget > 0) {
+                capabilities += RoleAssignment.CRITIQUE
+            }
+            ResearchMode.CUSTOM -> Unit
+        }
+        val grants = RoleAssignment.assign(
+            participants = eligible,
+            complexity = start.complexity,
+            requiredCapabilities = capabilities,
+            remainingBudget = start.requestBudget,
+            knownQuotas = start.knownQuotas,
+            excludedProviders = start.excludedProviders,
+        )
         persistParticipants(sessionId, eligible, grants)
         openRound(sessionId, 1)
         grants.filter { it.role == ParticipantRole.RESEARCHER }.forEach { grant ->
@@ -172,6 +194,21 @@ class OrchestrationEngine(
                 body = text,
                 roundNumber = task.roundNumber,
                 createdAtEpochMs = now,
+            ),
+        )
+        council.insertImport(
+            com.airachabanda.app.persistence.ImportedResponseEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                taskId = taskId,
+                providerId = task.providerId,
+                roundNumber = task.roundNumber,
+                body = text,
+                userSupplied = true,
+                authenticated = false,
+                createdAtEpochMs = now,
+                userDeclaredModelId = ModelIdentity.declared(userDeclaredModelId),
+                verifiedModelId = ModelIdentity.UNKNOWN,
             ),
         )
         council.updateTaskState(taskId, AssistedTaskState.COMPLETED.name, now)
@@ -513,6 +550,153 @@ class OrchestrationEngine(
         snapshot(sessionId)
     }
 
+    suspend fun skipTask(sessionId: String, taskId: String): SessionSnapshot = mutex.withLock {
+        val task = council.task(taskId) ?: return@withLock snapshot(sessionId)
+        if (task.sessionId != sessionId || task.state !in OPEN_TASKS) return@withLock snapshot(sessionId)
+        council.updateTaskState(taskId, AssistedTaskState.SKIPPED.name, clock())
+        val session = fresh(sessionId)
+        if (session.state == SessionState.AWAITING_USER_RESPONSE.name && session.awaitState != null) {
+            move(
+                sessionId,
+                SessionState.valueOf(session.awaitState),
+                "A task was skipped. No response was invented.",
+                await = null,
+            )
+        }
+        pump(sessionId)
+        snapshot(sessionId)
+    }
+
+    suspend fun submitAction(request: ProtocolRequest): ProtocolResult = mutex.withLock {
+        val session = discussion.session(request.sessionId)
+            ?: return@withLock ProtocolResult(false, "Session not found.", null)
+        val actor = discussion.participants(session.id).firstOrNull { it.id == request.actorParticipantId }
+        val roles = actor?.let { discussion.roles(it.id).map { role -> role.role }.toSet() }.orEmpty()
+        val decision = CouncilProtocol.validate(
+            request = request,
+            sessionState = session.state,
+            actorFound = actor != null,
+            actorRoles = roles,
+            requestBudget = session.requestBudget,
+            requestsConsumed = session.requestsConsumed,
+        )
+        discussion.insertProtocol(
+            com.airachabanda.app.persistence.ProtocolActionEntity(
+                id = ids(),
+                sessionId = session.id,
+                actorParticipantId = request.actorParticipantId,
+                action = request.action.name,
+                targetId = request.targetId,
+                body = request.body.trim(),
+                accepted = decision.accepted,
+                reason = decision.reason,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        if (!decision.accepted || actor == null) {
+            return@withLock ProtocolResult(false, decision.reason, snapshot(session.id))
+        }
+        when (request.action) {
+            CouncilAction.CHALLENGE_CLAIM -> {
+                val claim = discussion.claim(request.targetId.orEmpty())
+                if (claim == null || claim.sessionId != session.id) {
+                    return@withLock ProtocolResult(false, "The claim is not in this session.", snapshot(session.id))
+                }
+                discussion.insertObjection(
+                    ObjectionEntity(
+                        id = ids(),
+                        sessionId = session.id,
+                        targetClaimId = claim.id,
+                        authorParticipantId = actor.id,
+                        userDeclaredModelId = ModelIdentity.UNKNOWN,
+                        verifiedModelId = ModelIdentity.UNKNOWN,
+                        roundNumber = session.reviewRound.coerceAtLeast(1),
+                        category = com.airachabanda.app.core.model.ObjectionCategory.UNSUPPORTED_ASSUMPTION.name,
+                        severity = com.airachabanda.app.core.model.ObjectionSeverity.MEDIUM.name,
+                        explanation = request.body.trim(),
+                        supportingEvidence = "",
+                        requestedVerification = "Check the challenged claim against its evidence.",
+                        resolution = com.airachabanda.app.core.model.ResolutionStatus.OPEN.name,
+                        createdAtEpochMs = clock(),
+                    ),
+                )
+            }
+            CouncilAction.REQUEST_REBUTTAL -> {
+                val objectionId = request.targetId
+                val objection = objectionId?.let { discussion.objection(it) }
+                if (objection == null || objection.sessionId != session.id) {
+                    return@withLock ProtocolResult(false, "The objection is not in this session.", snapshot(session.id))
+                }
+                val claim = discussion.claim(objection.targetClaimId)
+                val author = claim?.let { target ->
+                    discussion.participants(session.id).firstOrNull { it.id == target.authorParticipantId }
+                }
+                if (author != null && discussion.rebuttals(objection.id).isEmpty()) {
+                    createTask(
+                        participant = author,
+                        role = ParticipantRole.RESEARCHER,
+                        kind = KIND_REBUTTAL,
+                        prompt = "Respond to objection ${objection.id}. Do not invent citations. Objection: ${objection.explanation}",
+                        round = session.reviewRound.coerceAtLeast(1),
+                        targetId = objection.id,
+                    )
+                }
+            }
+            CouncilAction.REQUEST_VERIFICATION -> {
+                val verifier = roleParticipant(session.id, ParticipantRole.EVIDENCE_VERIFIER)
+                if (verifier == null) {
+                    return@withLock ProtocolResult(false, "No evidence verifier is assigned.", snapshot(session.id))
+                }
+                createTask(
+                    participant = verifier,
+                    role = ParticipantRole.EVIDENCE_VERIFIER,
+                    kind = KIND_VERIFICATION,
+                    prompt = "Check the challenged material. Do not invent sources. ${request.body.trim()}",
+                    round = session.reviewRound.coerceAtLeast(1),
+                    targetId = request.targetId,
+                )
+            }
+            CouncilAction.REQUEST_ADDITIONAL_RESEARCH -> {
+                if (discussion.rounds(session.id).size >= session.roundLimit) {
+                    return@withLock ProtocolResult(false, "The round limit has been reached.", snapshot(session.id))
+                }
+                val nextRound = discussion.rounds(session.id).size + 1
+                openRound(session.id, nextRound)
+                createTask(
+                    participant = actor,
+                    role = ParticipantRole.RESEARCHER,
+                    kind = KIND_FOLLOW_UP,
+                    prompt = request.body.trim(),
+                    round = nextRound,
+                    targetId = null,
+                )
+            }
+            CouncilAction.SUBMIT_CORRECTION -> {
+                discussion.insertClaim(
+                    ClaimEntity(
+                        id = ids(),
+                        sessionId = session.id,
+                        messageId = null,
+                        authorParticipantId = actor.id,
+                        roundNumber = session.reviewRound.coerceAtLeast(1),
+                        statement = request.body.trim(),
+                        createdAtEpochMs = clock(),
+                    ),
+                )
+            }
+            CouncilAction.RECOMMEND_SYNTHESIS -> {
+                val critiqueOpen = council.tasksForSession(session.id).any {
+                    it.kind == KIND_CRITIQUE && it.state in OPEN_TASKS
+                }
+                if (critiqueOpen) {
+                    return@withLock ProtocolResult(false, "Critical review is still open.", snapshot(session.id))
+                }
+                ensureSynthesisTask(fresh(session.id))
+            }
+        }
+        ProtocolResult(true, decision.reason, snapshot(session.id))
+    }
+
     private suspend fun enterCollection(sessionId: String) {
         val tasks = council.tasksForSession(sessionId)
         val automatedOpen = tasks.any { it.automated && it.state in OPEN_TASKS }
@@ -598,13 +782,29 @@ class OrchestrationEngine(
             )
             return true
         }
+        val mode = ResearchMode.valueOf(session.researchMode)
+        val disclosure = when (mode) {
+            ResearchMode.QUICK -> "Quick mode did not run a critical review because no assisted reviewer was available and the automated request budget did not permit one."
+            ResearchMode.STANDARD, ResearchMode.DEEP_RESEARCH -> "Critical review is unavailable. No reviewer could be assigned. No objection was invented."
+            ResearchMode.CUSTOM -> "Critical review was not requested for this custom session."
+        }
         if (roles.any { it.role == ParticipantRole.FINAL_SYNTHESIZER.name }) {
             ensureSynthesisTask(fresh(session.id))
-            move(session.id, SessionState.SYNTHESIS, "Synthesis is ready. No final answer has been written.")
+            move(session.id, SessionState.SYNTHESIS, disclosure)
             return true
         }
-        move(session.id, SessionState.COMPLETED, "No critique or synthesis role was assigned.")
+        move(session.id, SessionState.COMPLETED, disclosure)
         return true
+    }
+
+    private fun englishTask(kind: String): String = when (kind) {
+        KIND_CRITIQUE -> "critical review"
+        KIND_REBUTTAL -> "rebuttal"
+        KIND_VERIFICATION -> "verification"
+        KIND_SYNTHESIS -> "synthesis"
+        KIND_RESEARCH -> "research task"
+        KIND_FOLLOW_UP -> "follow-up"
+        else -> "task"
     }
 
     private suspend fun progressWaiting(
@@ -620,7 +820,7 @@ class OrchestrationEngine(
             move(
                 session.id,
                 SessionState.AWAITING_USER_RESPONSE,
-                "Waiting for an assisted $kind task. No response was invented.",
+                "Waiting for an assisted ${englishTask(kind)}. No response was invented.",
                 await = workState.name,
             )
             return true
@@ -707,6 +907,19 @@ class OrchestrationEngine(
         )
     }
 
+    private suspend fun reservedReviewSlots(sessionId: String): Int {
+        val people = discussion.participants(sessionId)
+        val roles = people.flatMap { discussion.roles(it.id) }
+        fun automated(role: ParticipantRole): Boolean = roles.any { grant ->
+            grant.role == role.name &&
+                people.firstOrNull { it.id == grant.participantId }?.participationMode == ParticipationMode.AUTOMATED.name
+        }
+        var slots = 0
+        if (automated(ParticipantRole.DEVILS_ADVOCATE)) slots += 1
+        if (automated(ParticipantRole.FINAL_SYNTHESIZER)) slots += 1
+        return slots
+    }
+
     private suspend fun createTask(
         participant: ParticipantEntity,
         role: ParticipantRole,
@@ -724,7 +937,12 @@ class OrchestrationEngine(
         var state = if (automated) AssistedTaskState.READY else AssistedTaskState.AWAITING_USER_RESPONSE
         var markAutomated = false
         if (participant.participationMode == ParticipationMode.AUTOMATED.name) {
-            if (!automated || session.requestsConsumed >= session.requestBudget) {
+            val ceiling = if (kind == KIND_RESEARCH || kind == KIND_FOLLOW_UP) {
+                (session.requestBudget - reservedReviewSlots(session.id)).coerceAtLeast(0)
+            } else {
+                session.requestBudget
+            }
+            if (!automated || session.requestsConsumed >= ceiling) {
                 state = AssistedTaskState.BLOCKED
             } else {
                 val consumed = session.requestsConsumed + 1
@@ -799,9 +1017,9 @@ class OrchestrationEngine(
                     id = ids(),
                     participantId = participantId,
                     providerId = candidate.providerId.name,
-                    userDeclaredModelId = ModelIdentity.UNKNOWN,
-                    verifiedModelId = ModelIdentity.UNKNOWN,
-                    independentlyVerified = false,
+                    userDeclaredModelId = ModelIdentity.declared(candidate.userDeclaredModelId),
+                    verifiedModelId = ModelIdentity.declared(candidate.verifiedModelId),
+                    independentlyVerified = ModelIdentity.declared(candidate.verifiedModelId) != ModelIdentity.UNKNOWN,
                     createdAtEpochMs = now,
                 ),
             )

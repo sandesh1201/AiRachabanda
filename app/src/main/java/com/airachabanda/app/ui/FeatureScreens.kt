@@ -28,7 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.airachabanda.app.core.model.AccountChoice
-import com.airachabanda.app.orchestration.DevilAdvocatePolicy
+import com.airachabanda.app.orchestration.CouncilStage
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.AssistedTaskState
 import com.airachabanda.app.core.model.BillingEligibility
@@ -125,8 +125,18 @@ fun CouncilScreen(
     onNewChat: (ResearchMode) -> Unit,
     onModeChange: (ResearchMode) -> Unit,
     onAddMessage: (String) -> Unit,
-    onPrepare: (ProviderId, String, ResearchMode) -> Unit,
+    stage: CouncilStage?,
+    onStart: (String, Set<ProviderId>) -> Unit,
+    onAdvance: () -> Unit,
+    onPrepare: (ProviderId, String, ResearchMode, Set<ProviderId>) -> Unit,
     onPrepareCritique: () -> Unit,
+    onRecordObjection: (String) -> Unit,
+    onRequestRebuttal: () -> Unit,
+    onRequestVerification: () -> Unit,
+    onPrepareSynthesis: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onStop: () -> Unit,
     onCopy: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onSkip: (String) -> Unit,
@@ -139,6 +149,13 @@ fun CouncilScreen(
     }
     var draft by rememberSaveable { mutableStateOf("") }
     var question by rememberSaveable { mutableStateOf("") }
+    var objection by rememberSaveable { mutableStateOf("") }
+    var claudeSelected by rememberSaveable { mutableStateOf(true) }
+    var chatGptSelected by rememberSaveable { mutableStateOf(false) }
+    val selectedProviders = buildSet {
+        if (claudeSelected) add(ProviderId.CLAUDE)
+        if (chatGptSelected) add(ProviderId.CHATGPT)
+    }
     Column(Modifier.fillMaxSize().padding(contentPadding)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = { onNewChat(mode) }) { Text("New Chat") }
@@ -195,8 +212,45 @@ fun CouncilScreen(
         }
         val answer = @Composable {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Discussion", style = MaterialTheme.typography.titleMedium)
+                Text("Stage: ${stage?.stage ?: "No session"}")
+                Text(stage?.statusNote ?: "Start a discussion to assign participants. No provider has been contacted.")
+                if (stage?.assistedOnly != false) {
+                    Text("Only assisted providers are available. You need to submit each prompt yourself and import the response. No provider is researching inside this app.")
+                }
+                Text("Participants")
+                if (stage?.participants.isNullOrEmpty()) {
+                    Text("No participants are assigned yet.")
+                } else {
+                    stage?.participants.orEmpty().forEach { Text(it) }
+                }
+                Text("Roles")
+                if (stage?.roles.isNullOrEmpty()) Text("No roles are assigned yet.") else stage?.roles.orEmpty().forEach { Text(it) }
+                Text("Tasks: ${stage?.completedTasks ?: 0} completed, ${stage?.pendingTasks ?: 0} pending.")
+                Text(if (stage?.waitingForUser == true) "Waiting for your response." else "Not waiting for a response.")
+                Text(stage?.critiqueNote ?: "Critical review has not started.")
+                Text("Objections: ${stage?.objectionCount ?: 0}. Unresolved: ${stage?.unresolvedObjections ?: 0}. Rebuttals: ${stage?.rebuttalCount ?: 0}.")
+                Text("Verification: ${stage?.verification ?: "Not started"}.")
+                Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = claudeSelected, onClick = { claudeSelected = !claudeSelected }, label = { Text("Claude") })
+                    FilterChip(selected = chatGptSelected, onClick = { chatGptSelected = !chatGptSelected }, label = { Text("ChatGPT") })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onStart(question, selectedProviders) }, enabled = question.isNotBlank()) { Text("Start discussion") }
+                    OutlinedButton(onClick = onAdvance) { Text("Advance") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onPause) { Text("Pause") }
+                    OutlinedButton(onClick = onResume) { Text("Resume") }
+                    OutlinedButton(onClick = onStop) { Text("Stop") }
+                }
                 Text("Final Answer", style = MaterialTheme.typography.titleMedium)
-                EmptyPanel("No final answer has been produced.")
+                if (stage?.finalAnswer.isNullOrBlank()) {
+                    EmptyPanel("No final answer has been produced.")
+                } else {
+                    Text(stage?.finalAnswer.orEmpty())
+                }
                 Text("Assisted tasks", style = MaterialTheme.typography.titleMedium)
                 androidx.compose.material3.OutlinedTextField(
                     value = question,
@@ -207,27 +261,38 @@ fun CouncilScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { onPrepare(ProviderId.CLAUDE, question, mode) },
+                        onClick = { onPrepare(ProviderId.CLAUDE, question, mode, selectedProviders) },
                         enabled = question.isNotBlank(),
                     ) { Text("Prepare Claude prompt") }
                     Button(
-                        onClick = { onPrepare(ProviderId.CHATGPT, question, mode) },
+                        onClick = { onPrepare(ProviderId.CHATGPT, question, mode, selectedProviders) },
                         enabled = question.isNotBlank(),
                     ) { Text("Prepare ChatGPT prompt") }
                 }
-                val critique = DevilAdvocatePolicy.assess(
-                    mode = mode,
-                    messages = messages,
-                    reviewer = ProviderId.CLAUDE,
-                    customRounds = 3,
-                    automatedBudget = 0,
-                )
                 Button(
                     onClick = onPrepareCritique,
-                    enabled = critique.assistedReviewPermitted,
+                    enabled = stage?.sessionId != null,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Prepare Claude critique") }
-                Text(critique.disclosure, style = MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.OutlinedTextField(
+                    value = objection,
+                    onValueChange = { objection = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Objection") },
+                    minLines = 2,
+                )
+                Button(
+                    onClick = {
+                        onRecordObjection(objection)
+                        objection = ""
+                    },
+                    enabled = objection.isNotBlank(),
+                ) { Text("Record objection") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onRequestRebuttal) { Text("Request rebuttal") }
+                    OutlinedButton(onClick = onRequestVerification) { Text("Request verification") }
+                }
+                OutlinedButton(onClick = onPrepareSynthesis) { Text("Prepare synthesis") }
                 ProviderRegistry.definition(ProviderId.CLAUDE).officialHttpsUrl?.let { url ->
                     OutlinedButton(onClick = { onOpenUrl(url) }) { Text("Open Claude") }
                 }

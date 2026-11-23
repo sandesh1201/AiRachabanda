@@ -3,7 +3,7 @@
 Date: 23 November 2026.
 Status: PARTIAL.
 
-The portrait phone display remains corrected. Credential storage, the Room discussion schema, and the orchestration engine are implemented and covered by unit tests. The visible assisted critique action was exercised on the phone. The engine is not yet the path behind that button. No live provider request was sent. The owner instruction ended at "Required capabilities," so no assignment rule beyond complexity and required capabilities was added.
+The portrait phone display remains corrected. Credential storage, the Room discussion schema, and the orchestration engine are implemented and covered by unit tests. The visible assisted critique action was exercised on the phone. At the time of this report the engine was not yet the path behind that button. Milestone 004A later connected it. The baseline for that work is commit `e418e1d`. No live provider request was sent. The owner instruction ended at "Required capabilities," so no assignment rule beyond complexity and required capabilities was added in Milestone 004.
 
 ## 1. Baseline
 

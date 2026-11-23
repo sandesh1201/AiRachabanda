@@ -256,27 +256,41 @@ private fun CouncilRoute(
     val conversation = conversations.firstOrNull { it.id == conversationId }
     val messages by model.messages.collectAsState()
     val tasks by model.tasks.collectAsState()
+    val stage by model.stage.collectAsState()
     CouncilScreen(
         conversation = conversation,
         messages = messages,
         tasks = tasks,
+        stage = stage,
         expanded = expanded,
         onNewChat = { mode -> model.create(mode) { id -> navController.navigate("council/$id") } },
         onModeChange = { mode -> conversationId?.let { model.setMode(it, mode) } },
         onAddMessage = { body -> conversationId?.let { model.addMessage(it, body) } },
-        onPrepare = { provider, question, mode ->
+        onStart = { question, selected ->
             val id = conversationId ?: return@CouncilScreen
-            model.prepareTask(id, provider, question, mode) {
-                notice("Prompt prepared. ${provider.name} is not researching inside this app.")
+            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, selected, notice)
+        },
+        onAdvance = { conversationId?.let { model.advance(it, notice) } },
+        onPrepare = { provider, question, mode, selected ->
+            val id = conversationId ?: return@CouncilScreen
+            model.prepareTask(id, provider, question, mode, selected) {
+                notice("Prompt prepared. ${provider.name} is not researching inside this app. $it")
             }
         },
         onPrepareCritique = {
             val id = conversationId ?: return@CouncilScreen
-            model.prepareCritique(id, conversation?.researchMode ?: ResearchMode.STANDARD, notice)
+            model.prepareCritique(id, notice)
         },
+        onRecordObjection = { text -> conversationId?.let { model.recordObjection(it, text, notice) } },
+        onRequestRebuttal = { conversationId?.let { model.requestRebuttal(it, notice) } },
+        onRequestVerification = { conversationId?.let { model.requestVerification(it, notice) } },
+        onPrepareSynthesis = { conversationId?.let { model.prepareSynthesis(it, notice) } },
+        onPause = { conversationId?.let { model.pause(it, notice) } },
+        onResume = { conversationId?.let { model.resume(it, notice) } },
+        onStop = { conversationId?.let { model.stop(it, notice) } },
         onCopy = { text -> notice(ExternalLinks.copy(application, "AI Rachabanda prompt", text)) },
         onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
-        onSkip = model::skip,
+        onSkip = { taskId -> conversationId?.let { model.skip(it, taskId) } },
         onDefer = model::defer,
         onImport = { provider, taskId ->
             val task = taskId.orEmpty()

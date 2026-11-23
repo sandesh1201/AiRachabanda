@@ -20,19 +20,18 @@ Model identity is `unknown` until a response actually supplies a name. That supp
 
 The engine can accept a question, select eligible participants, assign roles, create research tasks, record a supplied response as a claim, request a critique, record an objection, request a rebuttal, record verification, reassess within the round limit, and record a final conclusion without deleting earlier conclusions or open objections. Pause, resume, cancel, and a deadline stop the session. Follow-up questions are refused once the round limit is reached. Each transition writes a checkpoint. The engine does not loop without a round-limit check, and one `advance` call takes at most eight internal steps.
 
-The visible **Prepare Claude critique** action still uses the assisted-task path. It was exercised on the phone. The engine is covered by unit tests and is not yet the path behind that button.
+Milestone 004A routes the Council screen through `CouncilWorkflow`. Start, participant selection, assisted prompts, imports, critique, objections, rebuttals, verification, synthesis, pause, resume, and stop call the engine. An import that belongs to a task is stored once, as user-supplied and not authenticated.
 
 ## Roles
 
-Roles are Moderator, Researcher, Analyst, Domain Specialist, Devil's Advocate, Evidence Verifier, and Final Synthesizer.
+Roles are Moderator, Researcher, Analyst, Domain Specialist, Devil's Advocate, Evidence Verifier, and Final Synthesizer. A role is chosen for the session. It is not reserved for one provider.
 
-Assignment uses only question complexity and required capabilities:
+Assignment considers question complexity, required capabilities, which providers the user selected, whether a participant is assisted, a known numeric quota of zero for an automated participant, the remaining request budget, claim authors, and verified model identity. A null quota is unknown and does not exclude anyone. An unknown model identity stays `unknown` and is not an independent review. Two providers with the same verified model are not independent reviewers.
 
-- Low complexity requires research and synthesis.
-- Moderate complexity adds analysis and critique.
-- High complexity adds domain review and evidence verification.
-- A caller can add a capability. Low complexity plus critique assigns a Devil's Advocate.
-- The Devil's Advocate is a different participant from the final synthesizer when more than one participant is eligible.
-- A moderator is assigned whenever the session has a participant.
+Standard and Deep Research require a critique capability. Quick mode adds it when an assisted reviewer is available or the automated budget can pay for one. If no reviewer can be assigned, the session says so and does not invent an objection.
 
-The Milestone 004 instruction ended at "Required capabilities," so no further assignment factors were added.
+## Actions and budget
+
+`CouncilProtocol` accepts only the six workflow actions: additional research, a challenge, verification, a rebuttal, a correction, and a synthesis recommendation. Every action is untrusted. The engine checks the session state, the actor's role, a non-empty body, and the remaining request budget before it writes the action. An accepted action does not change billing, credentials, or the budget ceiling, and it is not executed as code.
+
+Research and follow-up tasks leave one automated request unused for an automated Devil's Advocate and one for an automated final synthesizer when those roles are automated. Assisted critique and synthesis do not spend the automated budget. The session also has a 60-minute local limit. Provider quotas are not invented.

@@ -315,8 +315,9 @@ interface CouncilDao {
         ConclusionEntity::class,
         WorkflowCheckpointEntity::class,
         RequestBudgetEntryEntity::class,
+        ProtocolActionEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

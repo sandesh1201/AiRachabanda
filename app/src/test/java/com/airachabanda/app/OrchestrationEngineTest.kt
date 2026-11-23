@@ -74,7 +74,7 @@ class OrchestrationEngineTest {
             EligibleParticipant(ProviderId.CLAUDE, assisted = true, billing = BillingEligibility.USER_CONFIGURATION_REQUIRED),
         )
         val conversationId = insertConversation()
-        val started = engine.acceptQuestion(start(conversationId, QuestionComplexity.LOW, budget = 1))
+        val started = engine.acceptQuestion(start(conversationId, QuestionComplexity.LOW, budget = 2))
         assertEquals(SessionState.INDEPENDENT_RESEARCH, started.state)
         assertEquals(1, started.requestsConsumed)
         val tasks = database.councilDao().tasksForSession(started.sessionId)

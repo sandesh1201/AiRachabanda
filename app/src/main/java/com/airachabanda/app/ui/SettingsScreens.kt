@@ -1,5 +1,7 @@
 package com.airachabanda.app.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -140,7 +142,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.4.0. This build stores credentials with Android Keystore and keeps a local discussion workflow. It does not send live AI requests.")
+                Text("Version 0.4.1. Council actions use the local discussion engine. This build does not send live AI requests.")
             }
         }
     }
@@ -217,7 +219,7 @@ fun ImportScreen(
     var round by rememberSaveable { mutableStateOf("1") }
     var status by rememberSaveable { mutableStateOf("Imported text is marked user-supplied. It is not an authenticated response.") }
     Column(
-        Modifier.fillMaxSize().padding(contentPadding).padding(16.dp),
+        Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Import response", style = MaterialTheme.typography.headlineSmall)

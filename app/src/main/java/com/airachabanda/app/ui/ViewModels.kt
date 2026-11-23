@@ -17,11 +17,9 @@ import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.core.model.ResearchTask
 import com.airachabanda.app.core.model.WorkflowEvent
-import com.airachabanda.app.orchestration.AssistedPrompt
-import com.airachabanda.app.orchestration.CritiquePrompt
-import com.airachabanda.app.orchestration.DevilAdvocatePolicy
+import com.airachabanda.app.orchestration.CouncilStage
+import com.airachabanda.app.orchestration.CouncilWorkflow
 import com.airachabanda.app.orchestration.ImportRules
-import com.airachabanda.app.provider.ProviderRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -67,7 +65,13 @@ class ActivityViewModel(container: AppContainer) : ViewModel() {
 
 class CouncilViewModel(container: AppContainer) : ViewModel() {
     private val repository = container.repository
+    private val workflow = CouncilWorkflow(
+        engine = container.orchestration,
+        council = container.councilDao,
+        discussion = container.discussionDao,
+    )
     private val selectedConversationId = MutableStateFlow<String?>(null)
+    private val revision = MutableStateFlow(0)
     val conversations: StateFlow<List<Conversation>> = repository.observeConversations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val messages: StateFlow<List<ChatMessage>> = selectedConversationId
@@ -78,6 +82,15 @@ class CouncilViewModel(container: AppContainer) : ViewModel() {
     val tasks: StateFlow<List<ResearchTask>> = selectedConversationId
         .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.observeTasks(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val stage: StateFlow<CouncilStage?> = kotlinx.coroutines.flow.combine(selectedConversationId, revision) { id, _ -> id }
+        .flatMapLatest { id ->
+            if (id == null) flowOf<CouncilStage?>(null) else kotlinx.coroutines.flow.flow { emit(workflow.inspect(id)) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private fun refresh() {
+        revision.value = revision.value + 1
+    }
 
     fun select(conversationId: String?) {
         selectedConversationId.value = conversationId
@@ -97,56 +110,96 @@ class CouncilViewModel(container: AppContainer) : ViewModel() {
         viewModelScope.launch { repository.addUserMessage(conversationId, body) }
     }
 
+    fun start(conversationId: String, question: String, mode: ResearchMode, selected: Set<ProviderId>, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.start(conversationId, question, mode, maxRounds.value, selected))
+            refresh()
+        }
+    }
+
     fun prepareTask(
         conversationId: String,
         providerId: ProviderId,
         question: String,
         mode: ResearchMode,
+        selected: Set<ProviderId>,
         onPrepared: (String) -> Unit,
     ) {
-        val prompt = AssistedPrompt.prepare(
-            providerName = ProviderRegistry.definition(providerId).displayName,
-            question = question,
-            modeLabel = mode.name.replace('_', ' ').lowercase().replaceFirstChar { it.titlecase() },
-        )
         viewModelScope.launch {
-            val id = repository.prepareAssistedTask(conversationId, providerId, prompt, roundNumber = 1)
-            onPrepared(id)
+            onPrepared(workflow.prepareResearchPrompt(conversationId, providerId, question, mode, maxRounds.value, selected))
+            refresh()
         }
     }
 
-    fun prepareCritique(
-        conversationId: String,
-        mode: ResearchMode,
-        onResult: (String) -> Unit,
-    ) {
-        val decision = DevilAdvocatePolicy.assess(
-            mode = mode,
-            messages = messages.value,
-            reviewer = ProviderId.CLAUDE,
-            customRounds = maxRounds.value,
-            automatedBudget = 0,
-        )
-        if (!decision.assistedReviewPermitted) {
-            onResult(decision.disclosure)
-            return
-        }
-        val round = (messages.value.mapNotNull { it.roundNumber }.maxOrNull() ?: 0) + 1
-        val prompt = CritiquePrompt.prepare(
-            reviewerName = ProviderRegistry.definition(ProviderId.CLAUDE).displayName,
-            modeLabel = mode.name.replace('_', ' ').lowercase().replaceFirstChar { it.titlecase() },
-            roundNumber = round,
-            messages = messages.value,
-            disclosure = decision.disclosure,
-        )
+    fun prepareCritique(conversationId: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
-            repository.prepareAssistedTask(conversationId, ProviderId.CLAUDE, prompt, round)
-            onResult("Claude critique prepared for round $round. Claude is not researching inside this app. ${decision.disclosure}")
+            val prompt = workflow.prepareCritique(conversationId)
+            onResult("Claude critique uses the discussion engine. Claude is not researching inside this app. $prompt")
+            refresh()
         }
     }
 
-    fun skip(taskId: String) {
-        viewModelScope.launch { repository.updateTaskState(taskId, AssistedTaskState.SKIPPED) }
+    fun recordObjection(conversationId: String, explanation: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.recordObjection(conversationId, explanation))
+            refresh()
+        }
+    }
+
+    fun requestRebuttal(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.requestRebuttal(conversationId))
+            refresh()
+        }
+    }
+
+    fun requestVerification(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.requestVerification(conversationId))
+            refresh()
+        }
+    }
+
+    fun prepareSynthesis(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.prepareSynthesis(conversationId))
+            refresh()
+        }
+    }
+
+    fun pause(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.pause(conversationId))
+            refresh()
+        }
+    }
+
+    fun resume(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.resume(conversationId))
+            refresh()
+        }
+    }
+
+    fun stop(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.stop(conversationId))
+            refresh()
+        }
+    }
+
+    fun advance(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.advance(conversationId))
+            refresh()
+        }
+    }
+
+    fun skip(conversationId: String, taskId: String) {
+        viewModelScope.launch {
+            workflow.skip(conversationId, taskId)
+            refresh()
+        }
     }
 
     fun defer(taskId: String) {
@@ -166,6 +219,11 @@ class AccountViewModel(container: AppContainer) : ViewModel() {
 
 class ImportViewModel(container: AppContainer) : ViewModel() {
     private val repository = container.repository
+    private val workflow = CouncilWorkflow(
+        engine = container.orchestration,
+        council = container.councilDao,
+        discussion = container.discussionDao,
+    )
     val conversations: StateFlow<List<Conversation>> = repository.observeConversations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -176,8 +234,13 @@ class ImportViewModel(container: AppContainer) : ViewModel() {
             return
         }
         viewModelScope.launch {
-            repository.importResponse(draft)
-            onResult(true, check.reason)
+            val taskId = draft.taskId
+            if (taskId != null) {
+                onResult(true, workflow.importTask(draft.conversationId, taskId, draft.body, draft.userDeclaredModelId))
+            } else {
+                repository.importResponse(draft)
+                onResult(true, check.reason)
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 # AI Rachabanda — project requirements
 
 Status: active. These requirements are mandatory for every milestone.
-Source: project owner instructions, the Milestone 002 architecture review, the Milestone 003 implementation decision, the Milestone 003A display correction, and the Milestone 004 orchestration decision.
+Source: project owner instructions, the Milestone 002 architecture review, the Milestone 003 implementation decision, the Milestone 003A display correction, the Milestone 004 orchestration decision, and the Milestone 004A council connection.
 Last updated: 23 November 2026.
 
 ## Identity
@@ -89,7 +89,9 @@ Milestone 003 builds the Android application foundation. The implementation reco
 
 Milestone 003A corrects the phone display. The application lays out from the Android window size, in density-independent pixels. A forced guest display size is not part of the application. The Devil's Advocate role is specified in `docs/architecture/devils-advocate.md`, tested in `docs/TEST_PLAN.md`, and scheduled in `docs/ROADMAP.md`. Live inference remains unauthorized.
 
-Milestone 004 keeps the verified Pixel 9a portrait window at 1080×2424 and 420 dpi. Provider credentials, when a later milestone stores them, are encrypted with an Android Keystore AES-256-GCM key per provider account. They are not stored in Room, DataStore, logs, or the repository. The discussion record is Room schema version 2, reached by a non-destructive migration. Unknown model identity is stored as `unknown`. A user-declared model name is not an independently verified model identity. The orchestration engine in `docs/architecture/orchestration.md` assigns roles from question complexity and required capabilities, and it does not send a provider request. The visible assisted critique action remains available. Live inference remains unauthorized.
+Milestone 004 keeps the verified Pixel 9a portrait window at 1080×2424 and 420 dpi. Provider credentials are encrypted with an Android Keystore AES-256-GCM key per provider account. They are not stored in Room, DataStore, logs, or the repository. Unknown model identity is stored as `unknown`. A user-declared model name is not an independently verified model identity.
+
+Milestone 004A connects the Council screen to `OrchestrationEngine`. Room schema version 3 adds the protocol-action record through a non-destructive migration from version 2. Role assignment also considers provider availability, model identity, known quotas, user selection, discussion progress, remaining budget, and reviewer independence. Standard and Deep Research attempt a critical review before synthesis. A manually imported response is not authenticated. The engine validates untrusted workflow actions before accepting them, and it does not send a provider request. Live inference remains unauthorized.
 
 ## Toolchain pin for Milestone 003
 

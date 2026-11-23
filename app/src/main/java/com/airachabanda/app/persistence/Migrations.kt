@@ -224,4 +224,26 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_request_budget_entries_sessionId` ON `request_budget_entries` (`sessionId`)")
         }
     }
+
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `protocol_actions` (
+                `id` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL,
+                `actorParticipantId` TEXT NOT NULL,
+                `action` TEXT NOT NULL,
+                `targetId` TEXT,
+                `body` TEXT NOT NULL,
+                `accepted` INTEGER NOT NULL,
+                `reason` TEXT NOT NULL,
+                `createdAtEpochMs` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`sessionId`) REFERENCES `research_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_protocol_actions_sessionId` ON `protocol_actions` (`sessionId`)")
+        }
+    }
 }

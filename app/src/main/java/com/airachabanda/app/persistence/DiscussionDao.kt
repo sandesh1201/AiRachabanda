@@ -71,6 +71,12 @@ interface DiscussionDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertBudget(entity: RequestBudgetEntryEntity)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertProtocol(entity: ProtocolActionEntity)
+
+    @Query("SELECT * FROM protocol_actions WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC")
+    suspend fun protocolActions(sessionId: String): List<ProtocolActionEntity>
+
     @Query("SELECT * FROM participants WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC")
     suspend fun participants(sessionId: String): List<ParticipantEntity>
 

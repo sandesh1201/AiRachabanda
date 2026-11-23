@@ -276,3 +276,27 @@ data class RequestBudgetEntryEntity(
     val reason: String,
     val createdAtEpochMs: Long,
 )
+
+@Entity(
+    tableName = "protocol_actions",
+    foreignKeys = [
+        ForeignKey(
+            entity = ResearchSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sessionId")],
+)
+data class ProtocolActionEntity(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val actorParticipantId: String,
+    val action: String,
+    val targetId: String?,
+    val body: String,
+    val accepted: Boolean,
+    val reason: String,
+    val createdAtEpochMs: Long,
+)

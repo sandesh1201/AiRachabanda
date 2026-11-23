@@ -28,7 +28,7 @@ class AppContainer(context: Application) {
         context,
         AppDatabase::class.java,
         "airachabanda.db",
-    ).addMigrations(Migrations.MIGRATION_1_2)
+    ).addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3)
         .build()
 
     val credentialStore: CredentialStore = KeystoreCredentialStore(
@@ -44,4 +44,6 @@ class AppContainer(context: Application) {
         discussion = database.discussionDao(),
         participants = DatabaseParticipantSource(database.councilDao()),
     )
+    val councilDao = database.councilDao()
+    val discussionDao = database.discussionDao()
 }
