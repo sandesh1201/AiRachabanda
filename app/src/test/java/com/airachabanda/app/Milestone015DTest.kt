@@ -6,6 +6,7 @@ import com.airachabanda.app.orchestration.ReviewClassification
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.local.ondevice.DownloadState
 import com.airachabanda.app.provider.local.ondevice.FixtureOnDeviceEngine
+import com.airachabanda.app.provider.local.ondevice.LocalTask
 import com.airachabanda.app.provider.local.ondevice.OnDeviceDispatch
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelManager
@@ -46,7 +47,7 @@ class Milestone015DTest {
         assertEquals(0, manager.networkRequests)
         val short = manager.download(qwen.id, consent = true, availableBytes = 1024)
         assertEquals(DownloadState.BLOCKED, short.state)
-        assertTrue(short.detail.contains("1598 MB"))
+        assertTrue(short.detail.contains("1,597,922,856 bytes"))
         val blocked = manager.download(gemma.id, consent = true, availableBytes = plenty)
         assertEquals(DownloadState.BLOCKED, blocked.state)
         assertEquals(0L, blocked.bytesTransferred)
@@ -80,7 +81,7 @@ class Milestone015DTest {
         assertFalse(scheduler.schedule(gemma.id, tight, ThermalLevel.NORMAL).loaded)
         assertFalse(scheduler.schedule(gemma.id, ram, ThermalLevel.SEVERE).loaded)
         assertFalse(scheduler.bounds(gemma.id, gemma.contextTokens + 1, 32).accepted)
-        assertFalse(scheduler.bounds(gemma.id, 128, OnDeviceRuntime.MAX_OUTPUT_TOKENS + 1).accepted)
+        assertFalse(scheduler.bounds(gemma.id, 128, LocalTask.COUNCIL.maxOutputTokens + 1).accepted)
         assertTrue(scheduler.bounds(gemma.id, 128, 32).accepted)
         val firstPermit = scheduler.begin(gemma.id)
         val newer = scheduler.begin(gemma.id)

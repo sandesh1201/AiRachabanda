@@ -9,6 +9,10 @@ object OnDeviceRuntime {
     const val NAME = "LiteRT-LM"
     const val MAVEN_COORDINATE = "com.google.ai.edge.litertlm:litertlm-android"
     const val MINIMUM_VERSION = "0.18.0"
+    const val PINNED_VERSION = "0.20.0"
+    const val AAR_SHA256 = "9cd2699d796a7120ff567316de85e797250cc10b2b67cb616c48567b719e7ed8"
+    const val LICENSE_NAME = "Apache-2.0"
+    const val BACKEND = "CPU"
     const val PACKAGED = false
     const val OWNER_DOWNLOAD_APPROVED = false
     const val NETWORK_PERMITTED = false

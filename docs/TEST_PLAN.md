@@ -262,6 +262,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - One model can be resident. A second load waits until the first is unloaded. A late generation id is rejected.
 - Fixture text is labeled and is not treated as model output. A local failure leaves the other participant in the council list.
 
+## Milestone 015E checks
+
+- LiteRT-LM 0.20.0 and its published AAR digest are recorded. The artifact is not packaged.
+- The Gemma CPU file has an exact size and revision and no invented SHA-256. The Qwen file has an exact size, revision, and digest.
+- A fixture installer resumes a partial file, rejects a mismatched digest, and does not open a transfer for Gemma.
+- Task output stays inside the model context window. These checks do not download a runtime or a model.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

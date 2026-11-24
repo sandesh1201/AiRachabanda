@@ -1,8 +1,9 @@
 package com.airachabanda.app.provider.local.ondevice
 
+import java.io.File
 import java.security.MessageDigest
 
-enum class DownloadState { NOT_INSTALLED, BLOCKED, CANCELLED }
+enum class DownloadState { NOT_INSTALLED, BLOCKED, CANCELLED, INTERRUPTED, REJECTED, INSTALLED }
 
 data class DownloadTicket(
     val modelId: String,
@@ -46,13 +47,23 @@ class OnDeviceModelManager {
                 ),
             )
         }
+        if (model.sha256.isNullOrBlank()) {
+            return remember(
+                DownloadTicket(
+                    model.id,
+                    DownloadState.BLOCKED,
+                    0,
+                    "No trusted SHA-256 is pinned for ${model.fileName}. Nothing was downloaded.",
+                ),
+            )
+        }
         if (!OnDeviceRuntime.OWNER_DOWNLOAD_APPROVED) {
             return remember(
                 DownloadTicket(
                     model.id,
                     DownloadState.BLOCKED,
                     0,
-                    "Owner approval is required before ${model.fileName} is transferred from ${model.repositoryUrl}. Nothing was downloaded.",
+                    "Owner approval is required before ${model.fileName} is transferred. Nothing was downloaded.",
                 ),
             )
         }
@@ -95,7 +106,22 @@ class OnDeviceModelManager {
     }
 
     companion object {
-        fun sha256(bytes: ByteArray): String =
+        fun sha256(bytes: ByteArray): String = digest(bytes)
+
+        fun sha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+
+        private fun digest(bytes: ByteArray): String =
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     }
 }

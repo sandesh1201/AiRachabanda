@@ -9,6 +9,13 @@ import com.airachabanda.app.orchestration.ReviewIndependence
 
 enum class ThermalLevel { NORMAL, SEVERE }
 
+enum class LocalTask(val maxOutputTokens: Int, val timeoutMs: Long) {
+    ARITHMETIC(128, 60_000L),
+    INSTRUCTION(256, 90_000L),
+    STRUCTURED(384, 90_000L),
+    COUNCIL(512, 180_000L),
+}
+
 data class ScheduleDecision(val loaded: Boolean, val residentModelId: String?, val detail: String)
 
 data class GenerationBounds(val accepted: Boolean, val contextTokens: Int, val outputTokens: Int, val timeoutMs: Long, val detail: String)
@@ -51,16 +58,38 @@ class OnDeviceScheduler {
         return ScheduleDecision(false, resident, "The model was unloaded.")
     }
 
-    fun bounds(modelId: String, requestedContext: Int, requestedOutput: Int): GenerationBounds {
+    fun limitsFor(modelId: String, task: LocalTask, promptTokens: Int): GenerationBounds {
         val model = OnDeviceModelCatalog.find(modelId)
             ?: return GenerationBounds(false, 0, 0, 0, "That model is not in the recommended catalog.")
-        if (requestedContext <= 0 || requestedContext > model.contextTokens) {
-            return GenerationBounds(false, model.contextTokens, 0, 0, "The context cap for ${model.displayName} is ${model.contextTokens} tokens.")
+        if (promptTokens < 0 || promptTokens >= model.contextTokens) {
+            return GenerationBounds(
+                false,
+                model.contextTokens,
+                0,
+                task.timeoutMs,
+                "The prompt is $promptTokens tokens. ${model.displayName} supports ${model.contextTokens}. The prompt was not sent.",
+            )
         }
-        if (requestedOutput <= 0 || requestedOutput > OnDeviceRuntime.MAX_OUTPUT_TOKENS) {
-            return GenerationBounds(false, requestedContext, OnDeviceRuntime.MAX_OUTPUT_TOKENS, 0, "Output is limited to ${OnDeviceRuntime.MAX_OUTPUT_TOKENS} tokens.")
+        val room = model.contextTokens - promptTokens
+        val output = minOf(task.maxOutputTokens, room)
+        val detail = if (output < task.maxOutputTokens) {
+            "Output was shortened to $output tokens so the ${model.contextTokens}-token window is not exceeded."
+        } else {
+            "Bounds accepted for ${task.name}."
         }
-        return GenerationBounds(true, requestedContext, requestedOutput, OnDeviceRuntime.GENERATION_TIMEOUT_MS, "Bounds accepted.")
+        return GenerationBounds(true, promptTokens, output, task.timeoutMs, detail)
+    }
+
+    fun bounds(modelId: String, requestedContext: Int, requestedOutput: Int): GenerationBounds {
+        val planned = limitsFor(modelId, LocalTask.COUNCIL, requestedContext)
+        if (!planned.accepted) return planned
+        if (requestedOutput <= 0 || requestedOutput > planned.outputTokens) {
+            return planned.copy(
+                accepted = false,
+                detail = "Output is limited to ${planned.outputTokens} tokens for this task and context window.",
+            )
+        }
+        return planned.copy(outputTokens = requestedOutput, detail = "Bounds accepted.")
     }
 
     fun begin(modelId: String): GenerationPermit {

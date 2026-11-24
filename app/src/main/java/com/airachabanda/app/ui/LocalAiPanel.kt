@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.airachabanda.app.provider.local.ondevice.LocalTask
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelManager
 import com.airachabanda.app.provider.local.ondevice.OnDeviceRuntime
@@ -42,15 +43,30 @@ fun LocalAiPanel() {
         )
         OnDeviceModelCatalog.recommended.forEach { model ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = selected.id == model.id, onClick = { selectedId = model.id })
+                RadioButton(
+                    selected = selected.id == model.id,
+                    onClick = {
+                        selectedId = model.id
+                        message = "No model file is stored on this device."
+                    },
+                )
                 Text(model.displayName)
             }
         }
-        Text("${selected.sizeLabel}. ${selected.fileName}.", style = MaterialTheme.typography.bodyMedium)
+        Text("${selected.fileName}", style = MaterialTheme.typography.bodyMedium)
+        Text("${selected.sizeLabel}. Revision ${selected.revision}.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            if (selected.sha256 == null) "SHA-256 is not pinned. The Gemma license has to be accepted by you before the digest can be read."
+            else "SHA-256 ${selected.sha256}.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Text("License: ${selected.licenseName}.", style = MaterialTheme.typography.bodySmall)
-        Text("Context limit: ${selected.contextTokens} tokens. Output limit: ${OnDeviceRuntime.MAX_OUTPUT_TOKENS} tokens.", style = MaterialTheme.typography.bodySmall)
-        Text("Published memory: ${selected.publishedPeakRamLabel}.", style = MaterialTheme.typography.bodySmall)
-        Text("Published speed: ${selected.publishedDecode}. Device: ${selected.publishedDevice}.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Context limit: ${selected.contextTokens} tokens. Arithmetic output is ${LocalTask.ARITHMETIC.maxOutputTokens} tokens. Council output is ${LocalTask.COUNCIL.maxOutputTokens} tokens and is shortened to stay inside that window.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text("Published memory: ${selected.publishedPeakRamLabel}", style = MaterialTheme.typography.bodySmall)
+        Text("Published speed: ${selected.publishedDecode} Device: ${selected.publishedDevice}.", style = MaterialTheme.typography.bodySmall)
         Text(selected.qualityNote, style = MaterialTheme.typography.bodySmall)
         Text("Free space on this device: $available bytes.", style = MaterialTheme.typography.bodySmall)
         Text(message, style = MaterialTheme.typography.bodyMedium)
