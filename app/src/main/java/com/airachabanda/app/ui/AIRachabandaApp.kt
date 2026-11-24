@@ -56,8 +56,8 @@ private val destinations = listOf(
 @Composable
 fun AIRachabandaApp(
     application: AIRachabandaApplication,
-    expanded: Boolean,
-    useRail: Boolean,
+    width: AdaptiveWidth,
+    fold: FoldGuide,
     sharedText: String?,
     sharedUris: List<Uri> = emptyList(),
     onSharedUrisConsumed: () -> Unit = {},
@@ -72,6 +72,7 @@ fun AIRachabandaApp(
         currentRoute == destination.route || currentRoute?.startsWith("${destination.route}/") == true
     }?.route
     val showPrimaryNav = topLevelRoute != null || currentRoute == null
+    val useRail = width != AdaptiveWidth.COMPACT
     fun notice(message: String) {
         scope.launch { snackbar.showSnackbar(message) }
     }
@@ -177,7 +178,7 @@ fun AIRachabandaApp(
                         contentPadding = padding,
                     )
                 }
-                composable("council") { CouncilRoute(application, factory, expanded, padding, ::notice, navController) }
+                composable("council") { CouncilRoute(application, factory, width, fold, padding, ::notice, navController) }
                 composable(
                     "council/{conversationId}",
                     arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
@@ -185,7 +186,8 @@ fun AIRachabandaApp(
                     CouncilRoute(
                         application,
                         factory,
-                        expanded,
+                        width,
+                        fold,
                         padding,
                         ::notice,
                         navController,
@@ -310,7 +312,8 @@ fun AIRachabandaApp(
 private fun CouncilRoute(
     application: AIRachabandaApplication,
     factory: ViewModelProviderFactory,
-    expanded: Boolean,
+    width: AdaptiveWidth,
+    fold: FoldGuide,
     padding: androidx.compose.foundation.layout.PaddingValues,
     notice: (String) -> Unit,
     navController: androidx.navigation.NavHostController,
@@ -374,7 +377,8 @@ private fun CouncilRoute(
         messages = messages,
         tasks = tasks,
         stage = stage,
-        expanded = expanded,
+        width = width,
+        fold = fold,
         onNewChat = { mode -> model.create(mode) { id -> navController.navigate("council/$id") } },
         onModeChange = { mode -> conversationId?.let { model.setMode(it, mode) } },
         onAddMessage = { body -> conversationId?.let { model.addMessage(it, body) } },

@@ -12,7 +12,7 @@ import com.airachabanda.app.provider.ProviderAccessMode
 object ModeGuide {
     fun summary(mode: ResearchMode): String = when (mode) {
         ResearchMode.QUICK ->
-            "Quick asks once. Critical review stays closed unless a critique capability is requested. One task runs at a time."
+            "Quick asks once. One AI request is not an independent multi-model review. Critical review stays closed unless a critique capability is requested. One task runs at a time."
         ResearchMode.STANDARD ->
             "Standard includes a critical review. Up to two tasks can run together. Delegation can go two steps."
         ResearchMode.DEEP_RESEARCH ->

@@ -2,7 +2,9 @@ package com.airachabanda.app.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +70,7 @@ import com.airachabanda.app.provider.AccessLabel
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderRegistry
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     providers: List<ProviderConfig>,
@@ -114,9 +117,10 @@ fun HomeScreen(
             if (mode == ResearchMode.CUSTOM) {
                 Text(ModeGuide.customDetail(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
             }
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+            FlowRow(
+                Modifier.padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ResearchMode.entries.forEach { entry ->
                     FilterChip(
@@ -232,12 +236,14 @@ private fun ProviderCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CouncilScreen(
     conversation: Conversation?,
     messages: List<ChatMessage>,
     tasks: List<ResearchTask>,
-    expanded: Boolean,
+    width: AdaptiveWidth,
+    fold: FoldGuide,
     onNewChat: (ResearchMode) -> Unit,
     onModeChange: (ResearchMode) -> Unit,
     onAddMessage: (String) -> Unit,
@@ -305,6 +311,18 @@ fun CouncilScreen(
     }
     var confirmStop by rememberSaveable { mutableStateOf(false) }
     var technical by rememberSaveable { mutableStateOf(false) }
+    var supportPane by rememberSaveable { mutableStateOf(SupportPane.PARTICIPANTS.name) }
+    var conversationOnly by rememberSaveable { mutableStateOf(false) }
+    var compactPane by rememberSaveable { mutableStateOf(SupportPane.CONVERSATION.name) }
+    var instruction by rememberSaveable { mutableStateOf("") }
+    val messageScroll = rememberSaveable(saver = androidx.compose.foundation.ScrollState.Saver) {
+        androidx.compose.foundation.ScrollState(0)
+    }
+    val supportScroll = rememberSaveable(saver = androidx.compose.foundation.ScrollState.Saver) {
+        androidx.compose.foundation.ScrollState(0)
+    }
+    val selectedSupport = runCatching { SupportPane.valueOf(supportPane) }.getOrDefault(SupportPane.PARTICIPANTS)
+    val selectedCompact = runCatching { SupportPane.valueOf(compactPane) }.getOrDefault(SupportPane.CONVERSATION)
     val requestStop = { confirmStop = true }
     val selectedProviders = selectedRaw.split(',').mapNotNull { name ->
         runCatching { ProviderId.valueOf(name) }.getOrNull()
@@ -314,7 +332,11 @@ fun CouncilScreen(
             Button(onClick = { onNewChat(mode) }) { Text("New Chat") }
             Text("Research mode", style = MaterialTheme.typography.labelLarge)
         }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(vertical = 8.dp),
+            ) {
             ResearchMode.entries.forEach { entry ->
                 FilterChip(
                     selected = mode == entry,
@@ -336,9 +358,17 @@ fun CouncilScreen(
             )
             return
         }
+        val showFilesInConversation = width != AdaptiveWidth.EXPANDED || conversationOnly || fold.tabletop
         val discussion = @Composable {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(conversation.title, style = MaterialTheme.typography.titleLarge)
+                Text(conversation.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
+                val people = stage?.participantControls.orEmpty()
+                Text(
+                    if (people.isEmpty()) "No participants are assigned yet."
+                    else people.joinToString(" · ") { "${it.label} ${it.availability}" },
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                )
                 Text(
                     "A message labeled You is yours. User-supplied, provider-attributed text was pasted by you. A local calculation is arithmetic on this device. A retrieved source has not been verified. A record-based synthesis uses stored findings.",
                     style = MaterialTheme.typography.bodySmall,
@@ -369,9 +399,9 @@ fun CouncilScreen(
                     "Add message stores your text locally. It does not contact a provider. ${DocumentLimits.EXPLANATION}",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                if (attachments.isEmpty()) {
+                if (showFilesInConversation && attachments.isEmpty()) {
                     Text("No file is attached. Choosing a file copies it into app storage. It is not uploaded.")
-                } else {
+                } else if (showFilesInConversation) {
                     val consent = attachments.any { it.includedInPrompt }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = consent, onCheckedChange = onAttachmentConsent)
@@ -404,7 +434,7 @@ fun CouncilScreen(
                     }
                     if (inspectedAttachment.isNotBlank()) Text(inspectedAttachment)
                 }
-                LocalDocuments(
+                if (showFilesInConversation) LocalDocuments(
                     documents = documents,
                     preview = documentPreview,
                     onGenerate = onGenerateDocument,
@@ -434,15 +464,37 @@ fun CouncilScreen(
                 }
             }
         }
-        val answer = @Composable {
+        val answer = @Composable { pane: SupportPane ->
+            val show = { wanted: SupportPane -> pane == wanted }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Discussion", style = MaterialTheme.typography.titleMedium)
-                Text("Stage: ${stage?.stage ?: "No session"}")
-                Text(stage?.statusNote ?: "Start a discussion to assign participants. No provider has been contacted.")
-                if (!stage?.continuityNote.isNullOrBlank()) Text(stage?.continuityNote.orEmpty())
-                if (stage?.assistedOnly != false) {
-                    Text("Only assisted providers are available. You need to submit each prompt yourself and import the response. No provider is researching inside this app.")
+                Text(pane.label, style = MaterialTheme.typography.titleMedium)
+                Text("Stage: ${stage?.stage ?: "No session"}. ${fold.label}", style = MaterialTheme.typography.bodySmall)
+                if (pane == SupportPane.ATTACHMENTS || pane == SupportPane.DOCUMENTS) {
+                    if (attachments.isEmpty()) {
+                        Text("No file is attached. Choosing a file copies it into app storage. It is not uploaded.")
+                    } else {
+                        attachments.forEach { item ->
+                            Text("${item.format} · ${item.label} · ${item.status} · ${item.sizeBytes} bytes", maxLines = 2)
+                            TextButton(onClick = { onInspectAttachment(item.id) }) { Text("Inspect") }
+                        }
+                        if (inspectedAttachment.isNotBlank()) Text(inspectedAttachment)
+                    }
+                    if (pane == SupportPane.DOCUMENTS) {
+                        LocalDocuments(
+                            documents = documents,
+                            preview = documentPreview,
+                            onGenerate = onGenerateDocument,
+                            onCancel = onCancelDocument,
+                            onInspect = onInspectDocument,
+                            onDelete = onDeleteDocument,
+                            onShare = onShareDocument,
+                            onOpen = onOpenDocument,
+                            onSave = onSaveDocument,
+                            onRegenerate = onRegenerateDocument,
+                        )
+                    }
                 }
+                if (show(SupportPane.PARTICIPANTS)) {
                 Text("Participants")
                 if (stage?.participantControls.isNullOrEmpty()) {
                     Text("No participants are assigned yet.")
@@ -464,10 +516,11 @@ fun CouncilScreen(
                 Text("Objections: ${stage?.objectionCount ?: 0}. Unresolved: ${stage?.unresolvedObjections ?: 0}. Rebuttals: ${stage?.rebuttalCount ?: 0}.")
                 Text("Verification: ${stage?.verification ?: "Not started"}.")
                 Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
-                TextButton(onClick = { technical = !technical }) {
+                }
+                if (show(SupportPane.TECHNICAL)) TextButton(onClick = { technical = !technical }) {
                     Text(if (technical) "Hide technical details" else "Technical details")
                 }
-                if (technical) {
+                if (show(SupportPane.TECHNICAL) || technical) {
                 Text("Plan", style = MaterialTheme.typography.titleMedium)
                 Text(stage?.planNote?.ifBlank { "No discussion plan has been recorded." } ?: "No discussion plan has been recorded.")
                 Text("Stopping reason", style = MaterialTheme.typography.titleMedium)
@@ -485,6 +538,7 @@ fun CouncilScreen(
                     stage?.exchanges.orEmpty().forEach { Text(it) }
                 }
                 }
+                if (show(SupportPane.EVIDENCE)) {
                 Text("Recorded synthesis", style = MaterialTheme.typography.titleMedium)
                 Text("Claims", style = MaterialTheme.typography.titleMedium)
                 val claims = stage?.claimLines.orEmpty()
@@ -494,6 +548,8 @@ fun CouncilScreen(
                     claims.forEach { line -> Text(line) }
                 }
                 Text(stage?.reviewDisclosure ?: "Reviewer independence has not been assessed.")
+                }
+                if (show(SupportPane.RESEARCH)) {
                 Text("Research", style = MaterialTheme.typography.titleMedium)
                 Text("A search sends only the query, or a URL you enter, to the selected public service. The rest of the conversation stays on this device.")
                 val research = stage?.researchLines.orEmpty()
@@ -538,6 +594,8 @@ fun CouncilScreen(
                     enabled = researchConsent && publicUrl.startsWith("https://"),
                 ) { Text("Retrieve page") }
                 Text(stage?.recordedSynthesis ?: "No discussion record is available.")
+                }
+                if (show(SupportPane.OBJECTIONS) || show(SupportPane.PARTICIPANTS)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     enabledProviders.sortedBy { it.name }.forEach { id ->
                         FilterChip(
@@ -554,7 +612,6 @@ fun CouncilScreen(
                     Button(onClick = { onStart(question, selectedProviders) }, enabled = question.isNotBlank()) { Text("Start discussion") }
                     OutlinedButton(onClick = onAdvance) { Text("Advance") }
                 }
-                var instruction by rememberSaveable { mutableStateOf("") }
                 OutlinedTextField(
                     value = instruction,
                     onValueChange = { instruction = it },
@@ -640,6 +697,7 @@ fun CouncilScreen(
                         TaskCard(task, onCopyAndOpen, onSkip, onDefer) { onImport(task.providerId, task.id) }
                     }
                 }
+                }
             }
         }
         Column(
@@ -654,21 +712,96 @@ fun CouncilScreen(
                 onFinish = onFinish,
             )
         }
-        if (expanded) {
-            Row(
-                Modifier.weight(1f).fillMaxWidth().clipToBounds(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+        val discussionActions = @Composable {
+            val skippable = stage?.participantControls?.firstOrNull { it.availability == "ELIGIBLE" }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (skippable != null) {
+                    OutlinedButton(onClick = { onSkipParticipant(skippable.id) }) { Text("Skip ${skippable.label}") }
+                }
+                OutlinedButton(
+                    onClick = {
+                        onAddContext(instruction, false)
+                        instruction = ""
+                    },
+                    enabled = instruction.isNotBlank(),
+                ) { Text("Add instruction") }
+            }
+            OutlinedTextField(
+                value = instruction,
+                onValueChange = { instruction = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Instruction") },
+                minLines = 1,
+            )
+        }
+        val paneChips = @Composable {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { discussion() }
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { answer() }
+                SupportPane.entries.filter { it != SupportPane.CONVERSATION || width != AdaptiveWidth.EXPANDED }.forEach { pane ->
+                    FilterChip(
+                        selected = if (width == AdaptiveWidth.EXPANDED) selectedSupport == pane else selectedCompact == pane,
+                        onClick = {
+                            if (width == AdaptiveWidth.EXPANDED) {
+                                supportPane = pane.name
+                                conversationOnly = false
+                            } else {
+                                compactPane = pane.name
+                            }
+                        },
+                        label = { Text(pane.label) },
+                    )
+                }
+                if (width == AdaptiveWidth.EXPANDED) {
+                    FilterChip(
+                        selected = conversationOnly,
+                        onClick = { conversationOnly = !conversationOnly },
+                        label = { Text(if (conversationOnly) "Show supporting pane" else "Conversation only") },
+                    )
+                }
+            }
+        }
+        val sideBySide = width == AdaptiveWidth.EXPANDED && !conversationOnly && !fold.tabletop
+        if (fold.tabletop) {
+            Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                Column(Modifier.weight(1f).verticalScroll(messageScroll)) {
+                    discussionActions()
+                    discussion()
+                }
+                androidx.compose.foundation.layout.Spacer(Modifier.height(fold.gapDp.dp))
+                Column(Modifier.weight(1f).verticalScroll(supportScroll)) {
+                    paneChips()
+                    answer(selectedSupport)
+                }
+            }
+        } else if (sideBySide) {
+            Row(Modifier.weight(1f).fillMaxWidth().clipToBounds(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1.2f).verticalScroll(messageScroll)) {
+                    discussionActions()
+                    discussion()
+                }
+                if (fold.vertical && fold.gapDp > 0) {
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(fold.gapDp.dp))
+                }
+                Column(Modifier.weight(1f).verticalScroll(supportScroll)) {
+                    paneChips()
+                    answer(selectedSupport)
+                }
             }
         } else {
             Column(
-                Modifier.weight(1f).clipToBounds().verticalScroll(rememberScrollState()),
+                Modifier.weight(1f).clipToBounds().verticalScroll(messageScroll),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                discussion()
-                answer()
+                paneChips()
+                discussionActions()
+                if (conversationOnly || selectedCompact == SupportPane.CONVERSATION) {
+                    discussion()
+                }
+                if (!conversationOnly && selectedCompact != SupportPane.CONVERSATION) {
+                    answer(selectedCompact)
+                }
             }
         }
         if (confirmStop) {
@@ -690,6 +823,7 @@ fun CouncilScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DiscussionControls(
     stage: CouncilStage?,
@@ -703,7 +837,7 @@ private fun DiscussionControls(
     if (!notificationsAllowed) {
         Text("Notification permission is off. This discussion continues while the app process is running. Android can still stop it after a force stop or reboot.")
     }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = onPause, modifier = Modifier.semantics { contentDescription = "Pause the discussion" }) { Text("Pause") }
         OutlinedButton(onClick = onResume, modifier = Modifier.semantics { contentDescription = "Resume the discussion" }) { Text("Resume") }
         Button(onClick = onStop, modifier = Modifier.semantics { contentDescription = "Stop the discussion" }) { Text("Stop") }

@@ -6,9 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
-import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,13 +13,14 @@ import com.airachabanda.app.documents.AttachmentShares
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.ui.AIRachabandaApp
 import com.airachabanda.app.ui.ExternalLinks
+import com.airachabanda.app.ui.rememberAdaptiveWidth
+import com.airachabanda.app.ui.rememberFoldGuide
 import com.airachabanda.app.ui.theme.AIRachabandaTheme
 
 class MainActivity : ComponentActivity() {
     private val sharedText = mutableStateOf<String?>(null)
     private val sharedUris = mutableStateOf<List<Uri>>(emptyList())
 
-    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -30,14 +28,15 @@ class MainActivity : ComponentActivity() {
         val app = application as AIRachabandaApplication
         setContent {
             val appearance by app.container.preferences.appearance.collectAsState(AppearanceMode.SYSTEM)
-            val width = calculateWindowSizeClass(this).widthSizeClass
+            val width = rememberAdaptiveWidth()
+            val fold = rememberFoldGuide()
             val shared by sharedText
             val streams by sharedUris
             AIRachabandaTheme(appearance) {
                 AIRachabandaApp(
                     application = app,
-                    expanded = width == WindowWidthSizeClass.Expanded,
-                    useRail = width != WindowWidthSizeClass.Compact,
+                    width = width,
+                    fold = fold,
                     sharedText = shared,
                     sharedUris = streams,
                     onSharedUrisConsumed = { sharedUris.value = emptyList() },

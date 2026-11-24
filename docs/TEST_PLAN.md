@@ -220,6 +220,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Cache files older than the sweep age are removed. A newer cache file is left in place.
 - Untrusted text cannot enable code execution, credential reads, arbitrary network access, or a budget increase through the execution gate.
 
+## Milestone 014 checks
+
+- Widths below 600 dp are compact, 600 through 839 dp are medium, and 840 dp and wider are expanded.
+- A half-opened separating vertical fold reserves a gap. A non-separating fold reserves none. Missing fold information uses the window width.
+- A control interval that overlaps the hinge gap is rejected by the gap check. An interval beside the gap is accepted.
+- Emulator screenshots at resized windows are window-size simulation. They are not folding-posture tests and they are not physical Galaxy Z Fold 6 tests.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.
