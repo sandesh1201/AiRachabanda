@@ -96,7 +96,7 @@ object ProviderSetupCatalog {
             methods = listOf(SetupMethod.LOCAL_INFERENCE),
             fields = emptyList(),
             links = emptyList(),
-            requirements = "No local runtime or model is installed. This app does not download one.",
+            requirements = "LiteRT-LM is prepared for Gemma 3 1B and Qwen 2.5 1.5B. No runtime or model file is installed. This build does not download one.",
             automatedBlocker = "Local inference is not installed.",
         ),
     ).associateBy { it.id }

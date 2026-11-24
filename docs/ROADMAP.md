@@ -32,6 +32,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 015A: Provider setup, credential entry, and official links stay inside the app. Automated inference stays behind the existing eligibility gates. No live inference request was sent.
 - Milestone 015B: Provider setup is a key or official sign-in, then Connect. Ready is shown only after the existing free-access checks pass. No live inference request was sent.
 - Milestone 015C: Connect can authenticate and read account, billing, or model metadata where a documented check exists. Ready still requires a completed connection test. No live inference request was sent.
+- Milestone 015D: On-device LiteRT-LM, Gemma 3 1B, and Qwen 2.5 1.5B are prepared. No runtime or model file was downloaded. No live inference request was sent.
 
 ## Next
 

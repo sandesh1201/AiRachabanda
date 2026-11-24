@@ -13,6 +13,8 @@ import com.airachabanda.app.provider.cloudflare.CloudflareOutcome
 import com.airachabanda.app.provider.gemini.GeminiAdapter
 import com.airachabanda.app.provider.gemini.GeminiOutcome
 import com.airachabanda.app.provider.local.LocalInferencePolicy
+import com.airachabanda.app.provider.local.ondevice.OnDeviceDispatch
+import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.openrouter.DispatchOutcome
 import com.airachabanda.app.provider.openrouter.OpenRouterFailure
 import com.airachabanda.app.provider.openrouter.ResponseDisposition
@@ -65,16 +67,20 @@ class PreparedProviderDispatch(
             ).toStored()
             ProviderId.LOCAL -> return DispatchOutcome(
                 OpenRouterFailure.POLICY,
-                LocalInferencePolicy.prepare(
-                    LocalInferencePolicy.Selection(
-                        modelId = call.modelId,
-                        endpointHost = "127.0.0.1",
-                        cloudDisabled = true,
-                        contextTokens = LocalInferencePolicy.MAX_CONTEXT_TOKENS,
-                        timeoutMs = 30_000,
-                        budgetRemaining = sessionBudgetRemaining,
-                    ),
-                ).reason,
+                if (OnDeviceModelCatalog.find(call.modelId) != null) {
+                    OnDeviceDispatch.reason(call.modelId)
+                } else {
+                    LocalInferencePolicy.prepare(
+                        LocalInferencePolicy.Selection(
+                            modelId = call.modelId,
+                            endpointHost = "127.0.0.1",
+                            cloudDisabled = true,
+                            contextTokens = LocalInferencePolicy.MAX_CONTEXT_TOKENS,
+                            timeoutMs = 30_000,
+                            budgetRemaining = sessionBudgetRemaining,
+                        ),
+                    ).reason
+                },
                 completed = false,
             )
             ProviderId.GEMINI -> gemini.complete(

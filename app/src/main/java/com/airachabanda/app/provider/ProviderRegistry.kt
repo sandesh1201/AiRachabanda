@@ -167,7 +167,7 @@ object ProviderRegistry {
             id = ProviderId.LOCAL,
             displayName = "Local model",
             kind = ProviderKind.INFERENCE_SERVICE,
-            summary = "Optional loopback runtime. It is not installed, it is not required for assisted chat, and it cannot call a cloud model.",
+            summary = "On-device LiteRT-LM is prepared and not installed. It cannot call a cloud model.",
             defaultParticipation = ParticipationMode.UNAVAILABLE,
             defaultBilling = BillingEligibility.UNKNOWN,
             defaultIntegration = IntegrationMethod.NONE,

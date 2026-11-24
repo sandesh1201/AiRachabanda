@@ -94,7 +94,7 @@ object ProviderAccess {
         modes = setOf(ProviderAccessMode.LOCAL_INFERENCE),
         chatUrl = null,
         labels = listOf(AccessLabel.LOCAL_INFERENCE, AccessLabel.CONFIGURATION_REQUIRED),
-        note = "Optional. Use adb reverse to the Windows loopback address. Android localhost is not Windows localhost. Cleartext stays off.",
+        note = "On-device models are listed under Local AI. Nothing is downloaded in this build. A cloud model is not used.",
     )
 
     private fun apiOnly(id: ProviderId, note: String) = ProviderAccessProfile(

@@ -255,6 +255,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - A Groq model-list fixture can verify the key and still leaves the Free plan unverified. A 401 does not verify authentication.
 - These checks use scripted responses. They do not call Groq, Cloudflare, OpenRouter, or Gemini.
 
+## Milestone 015D checks
+
+- LiteRT-LM is the selected runtime and is not packaged. Gemma and Qwen are the two recommended families.
+- A consented download with enough storage still transfers nothing, because owner approval is closed. A short storage check and a missing digest stay blocked.
+- One model can be resident. A second load waits until the first is unloaded. A late generation id is rejected.
+- Fixture text is labeled and is not treated as model output. A local failure leaves the other participant in the council list.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

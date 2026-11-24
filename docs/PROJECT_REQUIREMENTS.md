@@ -137,6 +137,8 @@ Milestone 015B keeps schema version 9. The provider screen asks for an API key o
 
 Milestone 015C keeps schema version 9. Connect can read Groq models, OpenRouter key limits, Cloudflare accounts and subscriptions, and Gemini project billing after consent. A stored key is not Ready. No live inference request is added by the milestone itself.
 
+Milestone 015D keeps schema version 9. LiteRT-LM is the prepared on-device runtime for Gemma 3 1B and Qwen 2.5 1.5B. The runtime and the model files are not downloaded. Online billing gates stay in place. No live inference request is added by the milestone itself.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

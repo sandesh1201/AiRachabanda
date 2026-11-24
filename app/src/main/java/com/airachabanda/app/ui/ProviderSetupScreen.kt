@@ -187,7 +187,7 @@ fun ProviderSetupScreen(
             ) { Text(if (enabled) "Connected for assisted chat" else "Connect") }
         }
         if (local) {
-            Text("Local inference stays unavailable until a supported runtime exists.")
+            LocalAiPanel()
         }
         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced details" else "Advanced details") }
         if (advanced) {
