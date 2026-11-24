@@ -56,6 +56,8 @@ class HistoryViewModel(container: AppContainer) : ViewModel() {
     private val repository = container.repository
     val conversations: StateFlow<List<Conversation>> = repository.observeConversations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val discussionStates: StateFlow<Map<String, String>> = repository.observeDiscussionStates()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun create(title: String, mode: ResearchMode, onCreated: (String) -> Unit) {
         viewModelScope.launch {

@@ -291,6 +291,11 @@ data class AttachmentChunkEntity(
     val limitation: String,
 )
 
+data class ConversationDiscussionState(
+    val conversationId: String,
+    val state: String,
+)
+
 @Dao
 interface CouncilDao {
     @Query("SELECT * FROM conversations ORDER BY updatedAtEpochMs DESC")
@@ -370,6 +375,13 @@ interface CouncilDao {
 
     @Query("SELECT * FROM research_sessions WHERE conversationId = :conversationId ORDER BY createdAtEpochMs DESC LIMIT 1")
     fun observeLatestSession(conversationId: String): Flow<List<ResearchSessionEntity>>
+
+    @Query(
+        "SELECT rs.conversationId AS conversationId, rs.state AS state FROM research_sessions AS rs " +
+            "INNER JOIN (SELECT conversationId, MAX(createdAtEpochMs) AS latest FROM research_sessions GROUP BY conversationId) AS picked " +
+            "ON rs.conversationId = picked.conversationId AND rs.createdAtEpochMs = picked.latest",
+    )
+    fun observeDiscussionStates(): Flow<List<ConversationDiscussionState>>
 
     @Query("UPDATE research_tasks SET prompt = :prompt, state = :state, updatedAtEpochMs = :updatedAt WHERE id = :id")
     suspend fun updateTaskContent(id: String, prompt: String, state: String, updatedAt: Long)

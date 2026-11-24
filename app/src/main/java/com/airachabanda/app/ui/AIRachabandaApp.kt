@@ -38,6 +38,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.airachabanda.app.AIRachabandaApplication
+import com.airachabanda.app.PendingDiscussion
 import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
 import kotlinx.coroutines.launch
@@ -145,11 +146,33 @@ fun AIRachabandaApp(
             ) {
                 composable("home") {
                     val model: HomeViewModel = viewModel(factory = factory)
+                    val history: HistoryViewModel = viewModel(factory = factory)
+                    val settings: SettingsViewModel = viewModel(factory = factory)
                     val providers by model.providers.collectAsState()
+                    val conversations by history.conversations.collectAsState()
+                    val defaultMode by settings.researchMode.collectAsState()
+                    val enabled by settings.enabledParticipants.collectAsState()
                     HomeScreen(
                         providers = providers,
-                        onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
+                        conversations = conversations,
+                        defaultMode = defaultMode,
+                        enabledProviders = enabled,
+                        onStart = { question, mode ->
+                            val title = question.lineSequence().firstOrNull { it.isNotBlank() }?.take(60) ?: "New conversation"
+                            history.create(title, mode) { id ->
+                                application.container.pendingDiscussion = PendingDiscussion(
+                                    conversationId = id,
+                                    question = question,
+                                    mode = mode,
+                                    participants = enabled,
+                                )
+                                navController.navigate("council/$id") { launchSingleTop = true }
+                            }
+                        },
+                        onOpenConversation = { id -> navController.navigate("council/$id") },
                         onOpenCouncil = { navController.navigate("council") },
+                        onOpenSettings = { navController.navigate("settings/providers") },
+                        onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
                         onOpenAccount = { id -> navController.navigate("account/${id.name}") },
                         contentPadding = padding,
                     )
@@ -172,15 +195,19 @@ fun AIRachabandaApp(
                 composable("activity") {
                     val model: ActivityViewModel = viewModel(factory = factory)
                     val events by model.events.collectAsState()
-                    ActivityScreen(events, padding)
+                    ActivityScreen(events, padding) { url -> notice(ExternalLinks.openHttps(application, url)) }
                 }
                 composable("history") {
                     val model: HistoryViewModel = viewModel(factory = factory)
+                    val settings: SettingsViewModel = viewModel(factory = factory)
                     val conversations by model.conversations.collectAsState()
+                    val states by model.discussionStates.collectAsState()
+                    val mode by settings.researchMode.collectAsState()
                     HistoryScreen(
                         conversations = conversations,
+                        discussionStates = states,
                         onCreate = { title ->
-                            model.create(title, ResearchMode.STANDARD) { id ->
+                            model.create(title, mode) { id ->
                                 navController.navigate("council/$id")
                             }
                         },
@@ -286,6 +313,13 @@ private fun CouncilRoute(
 ) {
     val model: CouncilViewModel = viewModel(factory = factory)
     LaunchedEffect(conversationId) { model.select(conversationId) }
+    LaunchedEffect(conversationId) {
+        val id = conversationId ?: return@LaunchedEffect
+        val pending = application.container.pendingDiscussion ?: return@LaunchedEffect
+        if (pending.conversationId != id) return@LaunchedEffect
+        application.container.pendingDiscussion = null
+        model.start(id, pending.question, pending.mode, pending.participants, notice)
+    }
     val conversations by model.conversations.collectAsState()
     val conversation = conversations.firstOrNull { it.id == conversationId }
     val messages by model.messages.collectAsState()

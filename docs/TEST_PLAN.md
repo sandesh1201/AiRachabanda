@@ -202,6 +202,14 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - A paused session and its request budget survive closing and reopening the database.
 - The lock-screen notification text does not include the fixture question.
 
+## Milestone 012 checks
+
+- Quick, Standard, Deep Research, and Custom descriptions match the planner limits. Custom names the participant selection and the round limit. It does not add a control the engine ignores.
+- An assisted provider that is not configured is labeled assisted chat. An automated API without a stored credential is setup required. Available is used only when automated inference is enabled. A stored credential is not displayed.
+- Activity filters map stored event types. A source URL in a retrieval event stays labeled with its verification status.
+- Pause, resume, stop, finish, and skip write a workflow event for the action that occurred. The discussion control behavior is unchanged.
+- History reads the latest stored session state. Delete waits for confirmation.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

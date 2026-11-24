@@ -3,6 +3,7 @@ package com.airachabanda.app.ui
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -37,8 +39,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.airachabanda.app.documents.ConversationAttachment
 import com.airachabanda.app.documents.DocumentGenerationLimits
 import com.airachabanda.app.documents.DocumentLimits
@@ -47,16 +53,13 @@ import com.airachabanda.app.documents.GeneratedDocumentItem
 import com.airachabanda.app.documents.OutputFormat
 import com.airachabanda.app.core.model.AccountChoice
 import com.airachabanda.app.orchestration.CouncilStage
-import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.AssistedTaskState
-import com.airachabanda.app.core.model.BillingEligibility
 import com.airachabanda.app.core.model.ChatMessage
 import com.airachabanda.app.core.model.Conversation
 import com.airachabanda.app.core.model.MessageSource
 import com.airachabanda.app.core.model.ParticipationMode
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
-import com.airachabanda.app.core.model.ProviderKind
 import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.core.model.ResearchTask
 import com.airachabanda.app.core.model.WorkflowEvent
@@ -68,38 +71,134 @@ import com.airachabanda.app.provider.ProviderRegistry
 @Composable
 fun HomeScreen(
     providers: List<ProviderConfig>,
-    onOpenUrl: (String) -> Unit,
+    conversations: List<Conversation>,
+    defaultMode: ResearchMode,
+    enabledProviders: Set<ProviderId>,
+    onStart: (String, ResearchMode) -> Unit,
+    onOpenConversation: (String) -> Unit,
     onOpenCouncil: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenUrl: (String) -> Unit,
     onOpenAccount: (ProviderId) -> Unit,
     contentPadding: PaddingValues,
 ) {
+    var draft by rememberSaveable { mutableStateOf("") }
+    var mode by rememberSaveable(defaultMode.name) { mutableStateOf(defaultMode) }
+    var showProviders by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp).imePadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("AI Rachabanda", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                "AI Rachabanda",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.semantics { contentDescription = "AI Rachabanda" },
+            )
             Text(
                 "Multiple Perspectives. Collective Intelligence.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        item {
+            Text("New discussion", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                label = { Text("Question") },
+                minLines = 3,
+            )
+            Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            if (mode == ResearchMode.CUSTOM) {
+                Text(ModeGuide.customDetail(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            }
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ResearchMode.entries.forEach { entry ->
+                    FilterChip(
+                        selected = mode == entry,
+                        onClick = { mode = entry },
+                        label = { Text(entry.label()) },
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Button(
+                    onClick = {
+                        onStart(draft, mode)
+                        draft = ""
+                    },
+                    enabled = draft.isNotBlank(),
+                ) { Text("Start discussion") }
+                OutlinedButton(onClick = onOpenCouncil) { Text("Open Council") }
+            }
             Text(
-                "Automated discussion is not available until a provider has a verified free allowance or a verified subscription that cannot spend extra credits.",
-                modifier = Modifier.padding(top = 8.dp),
-                style = MaterialTheme.typography.bodyMedium,
+                "Start discussion creates a conversation and keeps the question on this device. Attachments are added inside the Council.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
-        item { SectionTitle("Primary providers") }
-        items(providers.filter { ProviderRegistry.definition(it.providerId).prominent }, key = { it.providerId.name }) { config ->
-            ProviderCard(config, onOpenUrl, onOpenCouncil, onOpenAccount)
+        item {
+            Text("Quick actions", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                FilterChip(selected = mode == ResearchMode.DEEP_RESEARCH, onClick = { mode = ResearchMode.DEEP_RESEARCH }, label = { Text("Research") })
+                FilterChip(selected = false, onClick = onOpenCouncil, label = { Text("Document analysis") })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                FilterChip(selected = false, onClick = onOpenCouncil, label = { Text("Document creation") })
+                FilterChip(selected = mode == ResearchMode.STANDARD, onClick = { mode = ResearchMode.STANDARD }, label = { Text("AI discussion") })
+            }
         }
-        item { SectionTitle("Other providers") }
-        items(providers.filter { !ProviderRegistry.definition(it.providerId).prominent }, key = { it.providerId.name }) { config ->
-            ProviderCard(config, onOpenUrl, onOpenCouncil, onOpenAccount)
+        item {
+            Text("Recent conversations", style = MaterialTheme.typography.titleMedium)
+            if (conversations.isEmpty()) {
+                EmptyPanel("No conversation is stored on this device yet.")
+            }
+        }
+        items(conversations.take(4), key = { it.id }) { conversation ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(conversation.title, style = MaterialTheme.typography.titleSmall)
+                    Text(conversation.researchMode.label(), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onOpenConversation(conversation.id) }) { Text("Continue") }
+                }
+            }
+        }
+        item {
+            Text("Providers", style = MaterialTheme.typography.titleMedium)
+            Text(providerSummary(providers, enabledProviders), modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Zero-cost mode is on. An unconfigured provider is not connected.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onOpenSettings) { Text("Provider settings") }
+            TextButton(onClick = { showProviders = !showProviders }) {
+                Text(if (showProviders) "Hide provider actions" else "Provider actions")
+            }
+        }
+        if (showProviders) {
+            items(providers, key = { "provider-${it.providerId.name}" }) { config ->
+                ProviderCard(config, onOpenUrl, onOpenCouncil, onOpenAccount)
+            }
         }
     }
+}
+
+private fun providerSummary(providers: List<ProviderConfig>, enabled: Set<ProviderId>): String {
+    if (providers.isEmpty()) return "Provider status is still loading."
+    return providers.groupBy { providerStatus(it, enabled) }.entries.joinToString("\n") { (status, rows) ->
+        val names = rows.joinToString(", ") { ProviderRegistry.definition(it.providerId).displayName }
+        "$status: $names."
+    }
+}
+
+private fun providerStatus(config: ProviderConfig, enabled: Set<ProviderId>): String {
+    val assisted = ProviderAccess.active(config.providerId) == ParticipationMode.ASSISTED
+    return ProviderPresentation.status(config, enabled = !assisted || config.providerId in enabled)
 }
 
 @Composable
@@ -113,11 +212,9 @@ private fun ProviderCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(definition.displayName, style = MaterialTheme.typography.titleMedium)
-            Text(
-                if (definition.kind == ProviderKind.CONSUMER_PRODUCT) "Consumer product" else "Inference service",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Text("Account status: ${config.accountChoice.label()}")
+            Text(ProviderPresentation.status(config), style = MaterialTheme.typography.labelLarge)
+            Text(ProviderPresentation.kind(config), style = MaterialTheme.typography.bodySmall)
+            Text("Account declaration: ${config.accountChoice.label()}")
             Text(accessLine(config.providerId))
             Text(ProviderAccess.profile(config.providerId).note, style = MaterialTheme.typography.bodySmall)
             val chat = ProviderAccess.profile(config.providerId).chatUrl
@@ -206,15 +303,18 @@ fun CouncilScreen(
     var selectedRaw by rememberSaveable(enabledProviders.sortedBy { it.name }.joinToString(",")) {
         mutableStateOf(enabledProviders.joinToString(","))
     }
+    var confirmStop by rememberSaveable { mutableStateOf(false) }
+    var technical by rememberSaveable { mutableStateOf(false) }
+    val requestStop = { confirmStop = true }
     val selectedProviders = selectedRaw.split(',').mapNotNull { name ->
         runCatching { ProviderId.valueOf(name) }.getOrNull()
     }.toSet()
-    Column(Modifier.fillMaxSize().padding(contentPadding)) {
+    Column(Modifier.fillMaxSize().imePadding().padding(contentPadding).padding(horizontal = 16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = { onNewChat(mode) }) { Text("New Chat") }
             Text("Research mode", style = MaterialTheme.typography.labelLarge)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             ResearchMode.entries.forEach { entry ->
                 FilterChip(
                     selected = mode == entry,
@@ -226,6 +326,10 @@ fun CouncilScreen(
                 )
             }
         }
+        Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall)
+        if (mode == ResearchMode.CUSTOM) {
+            Text(ModeGuide.customDetail(), style = MaterialTheme.typography.bodySmall)
+        }
         if (conversation == null) {
             EmptyPanel(
                 "No conversation is open. Create a chat to prepare an assisted prompt. No provider is ready for automated discussion.",
@@ -235,6 +339,10 @@ fun CouncilScreen(
         val discussion = @Composable {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(conversation.title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "A message labeled You is yours. User-supplied, provider-attributed text was pasted by you. A local calculation is arithmetic on this device. A retrieved source has not been verified. A record-based synthesis uses stored findings.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 if (messages.isEmpty()) {
                     EmptyPanel("No messages yet. A message you add stays on this device until you submit it yourself through the provider.")
                 } else {
@@ -356,6 +464,10 @@ fun CouncilScreen(
                 Text("Objections: ${stage?.objectionCount ?: 0}. Unresolved: ${stage?.unresolvedObjections ?: 0}. Rebuttals: ${stage?.rebuttalCount ?: 0}.")
                 Text("Verification: ${stage?.verification ?: "Not started"}.")
                 Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
+                TextButton(onClick = { technical = !technical }) {
+                    Text(if (technical) "Hide technical details" else "Technical details")
+                }
+                if (technical) {
                 Text("Plan", style = MaterialTheme.typography.titleMedium)
                 Text(stage?.planNote?.ifBlank { "No discussion plan has been recorded." } ?: "No discussion plan has been recorded.")
                 Text("Stopping reason", style = MaterialTheme.typography.titleMedium)
@@ -371,6 +483,7 @@ fun CouncilScreen(
                     Text("No participant request has been recorded.")
                 } else {
                     stage?.exchanges.orEmpty().forEach { Text(it) }
+                }
                 }
                 Text("Recorded synthesis", style = MaterialTheme.typography.titleMedium)
                 Text("Claims", style = MaterialTheme.typography.titleMedium)
@@ -466,7 +579,7 @@ fun CouncilScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onPause) { Text("Pause") }
                     OutlinedButton(onClick = onResume) { Text("Resume") }
-                    OutlinedButton(onClick = onStop) { Text("Stop") }
+                    OutlinedButton(onClick = requestStop, modifier = Modifier.semantics { contentDescription = "Stop the discussion" }) { Text("Stop") }
                 }
                 Text("Final Answer", style = MaterialTheme.typography.titleMedium)
                 if (stage?.finalAnswer.isNullOrBlank()) {
@@ -529,17 +642,21 @@ fun CouncilScreen(
                 }
             }
         }
-        DiscussionControls(
-            stage = stage,
-            notificationsAllowed = notificationsAllowed,
-            onPause = onPause,
-            onResume = onResume,
-            onStop = onStop,
-            onFinish = onFinish,
-        )
+        Column(
+            Modifier.zIndex(1f).background(MaterialTheme.colorScheme.background).padding(bottom = 8.dp),
+        ) {
+            DiscussionControls(
+                stage = stage,
+                notificationsAllowed = notificationsAllowed,
+                onPause = onPause,
+                onResume = onResume,
+                onStop = requestStop,
+                onFinish = onFinish,
+            )
+        }
         if (expanded) {
             Row(
-                Modifier.weight(1f).fillMaxWidth(),
+                Modifier.weight(1f).fillMaxWidth().clipToBounds(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { discussion() }
@@ -547,12 +664,28 @@ fun CouncilScreen(
             }
         } else {
             Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                Modifier.weight(1f).clipToBounds().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 discussion()
                 answer()
             }
+        }
+        if (confirmStop) {
+            AlertDialog(
+                onDismissRequest = { confirmStop = false },
+                title = { Text("Stop this discussion?") },
+                text = {
+                    Text("Completed findings and generated files stay on this device. New requests stop. Remote provider processing is not confirmed as stopped.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmStop = false
+                        onStop()
+                    }) { Text("Stop discussion") }
+                },
+                dismissButton = { TextButton(onClick = { confirmStop = false }) { Text("Keep going") } },
+            )
         }
     }
 }
@@ -571,10 +704,10 @@ private fun DiscussionControls(
         Text("Notification permission is off. This discussion continues while the app process is running. Android can still stop it after a force stop or reboot.")
     }
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = onPause) { Text("Pause") }
-        OutlinedButton(onClick = onResume) { Text("Resume") }
-        Button(onClick = onStop) { Text("Stop") }
-        OutlinedButton(onClick = onFinish) { Text("Finish now") }
+        OutlinedButton(onClick = onPause, modifier = Modifier.semantics { contentDescription = "Pause the discussion" }) { Text("Pause") }
+        OutlinedButton(onClick = onResume, modifier = Modifier.semantics { contentDescription = "Resume the discussion" }) { Text("Resume") }
+        Button(onClick = onStop, modifier = Modifier.semantics { contentDescription = "Stop the discussion" }) { Text("Stop") }
+        OutlinedButton(onClick = onFinish, modifier = Modifier.semantics { contentDescription = "Finish now with the current findings" }) { Text("Finish now") }
     }
 }
 
@@ -636,8 +769,13 @@ private fun LocalDocuments(
     var includeRecords by rememberSaveable { mutableStateOf(false) }
     var templateMenu by rememberSaveable { mutableStateOf(false) }
     var formatMenu by rememberSaveable { mutableStateOf(false) }
+    var deleting by rememberSaveable { mutableStateOf("") }
     Text("Local document", style = MaterialTheme.typography.titleMedium)
     Text(DocumentGenerationLimits.EXPLANATION, style = MaterialTheme.typography.bodySmall)
+    Text(
+        "OCR is not installed, so a picture does not become text. Microsoft Office visual compatibility has not been tested.",
+        style = MaterialTheme.typography.bodySmall,
+    )
     OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Document name") })
     OutlinedTextField(
         value = body,
@@ -700,31 +838,76 @@ private fun LocalDocuments(
             TextButton(onClick = { onShare(item.id) }) { Text("Share") }
             TextButton(onClick = { onOpen(item.id) }) { Text("Open") }
             TextButton(onClick = { onRegenerate(item.id) }) { Text("Regenerate") }
-            TextButton(onClick = { onDelete(item.id) }) { Text("Delete") }
+            TextButton(onClick = { deleting = item.id }) { Text("Delete") }
             if (item.status == "GENERATING") TextButton(onClick = { onCancel(item.id) }) { Text("Cancel") }
         }
     }
     if (preview.isNotBlank()) Text(preview)
+    if (deleting.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = { deleting = "" },
+            title = { Text("Delete this document?") },
+            text = { Text("The generated file is removed from this device. The conversation and its messages stay.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(deleting)
+                    deleting = ""
+                }) { Text("Delete document") }
+            },
+            dismissButton = { TextButton(onClick = { deleting = "" }) { Text("Keep") } },
+        )
+    }
 }
 
 @Composable
-fun ActivityScreen(events: List<WorkflowEvent>, contentPadding: PaddingValues) {
-    if (events.isEmpty()) {
-        EmptyPanel(
-            "No workflow events yet. Activity shows actions recorded on this device, such as a saved conversation or an assisted task waiting for you.",
-            Modifier.padding(contentPadding),
-        )
-        return
+fun ActivityScreen(
+    events: List<WorkflowEvent>,
+    contentPadding: PaddingValues,
+    onOpenUrl: (String) -> Unit,
+) {
+    var filter by rememberSaveable { mutableStateOf("All") }
+    var participant by rememberSaveable { mutableStateOf("All") }
+    val participants = listOf("All") + events.mapNotNull { it.providerId?.name }.distinct().sorted()
+    val shown = events.filter { event ->
+        ActivityFilter.matches(event.type, filter) &&
+            (participant == "All" || event.providerId?.name == participant)
     }
-    LazyColumn(contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item {
-            Text("Recorded on this device. A research line appears only after a request is sent or refused.")
+            Text("Activity", style = MaterialTheme.typography.headlineSmall)
+            Text("Recorded on this device. A retrieved source is not a verified source.")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActivityFilter.types.forEach { entry ->
+                    FilterChip(selected = filter == entry, onClick = { filter = entry }, label = { Text(entry) })
+                }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                participants.forEach { entry ->
+                    FilterChip(
+                        selected = participant == entry,
+                        onClick = { participant = entry },
+                        label = { Text(if (entry == "All") "All participants" else entry) },
+                    )
+                }
+            }
         }
-        items(events, key = { it.id }) { event ->
+        if (shown.isEmpty()) {
+            item { EmptyPanel("No recorded activity matches this filter.") }
+        }
+        items(shown, key = { it.id }) { event ->
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(event.type.replace('_', ' '), style = MaterialTheme.typography.labelLarge)
+                    event.providerId?.let { Text(ProviderRegistry.definition(it).displayName, style = MaterialTheme.typography.bodySmall) }
                     Text(event.summary)
+                    val url = ActivityFilter.sourceUrl(event.summary)
+                    if (url != null) {
+                        TextButton(onClick = { onOpenUrl(url) }) { Text("Open source") }
+                    }
                 }
             }
         }
@@ -734,6 +917,7 @@ fun ActivityScreen(events: List<WorkflowEvent>, contentPadding: PaddingValues) {
 @Composable
 fun HistoryScreen(
     conversations: List<Conversation>,
+    discussionStates: Map<String, String>,
     onCreate: (String) -> Unit,
     onOpen: (String) -> Unit,
     onRename: (String, String) -> Unit,
@@ -741,12 +925,25 @@ fun HistoryScreen(
     contentPadding: PaddingValues,
 ) {
     var title by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
     var renameText by rememberSaveable { mutableStateOf("") }
-    LazyColumn(contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    var deleting by rememberSaveable { mutableStateOf<String?>(null) }
+    val shown = conversations.filter { it.title.contains(query, ignoreCase = true) }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item {
             Text("History", style = MaterialTheme.typography.headlineSmall)
-            androidx.compose.material3.OutlinedTextField(
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                label = { Text("Search conversations") },
+            )
+            OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -760,24 +957,27 @@ fun HistoryScreen(
                 modifier = Modifier.padding(top = 8.dp),
             ) { Text("Create conversation") }
         }
-        if (conversations.isEmpty()) {
-            item { EmptyPanel("No conversations yet.") }
+        if (shown.isEmpty()) {
+            item { EmptyPanel(if (conversations.isEmpty()) "No conversations yet." else "No conversation title matches that search.") }
         }
-        items(conversations, key = { it.id }) { conversation ->
+        items(shown, key = { it.id }) { conversation ->
+            val status = ProviderPresentation.discussionStatus(discussionStates[conversation.id])
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(conversation.title, style = MaterialTheme.typography.titleMedium)
-                    Text(conversation.researchMode.label(), style = MaterialTheme.typography.bodySmall)
+                    Text("${conversation.researchMode.label()} · $status", style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { onOpen(conversation.id) }) { Text("Open") }
+                        TextButton(onClick = { onOpen(conversation.id) }) {
+                            Text(if (discussionStates[conversation.id] == null) "Open" else "Continue")
+                        }
                         TextButton(onClick = {
                             renaming = conversation.id
                             renameText = conversation.title
                         }) { Text("Rename") }
-                        TextButton(onClick = { onDelete(conversation.id) }) { Text("Delete") }
+                        TextButton(onClick = { deleting = conversation.id }) { Text("Delete") }
                     }
                     if (renaming == conversation.id) {
-                        androidx.compose.material3.OutlinedTextField(
+                        OutlinedTextField(
                             value = renameText,
                             onValueChange = { renameText = it },
                             modifier = Modifier.fillMaxWidth(),
@@ -792,6 +992,22 @@ fun HistoryScreen(
             }
         }
     }
+    val pendingDelete = deleting
+    if (pendingDelete != null) {
+        val name = conversations.firstOrNull { it.id == pendingDelete }?.title ?: "This conversation"
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete $name?") },
+            text = { Text("Messages, evidence, and generated files for this conversation are removed. This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(pendingDelete)
+                    deleting = null
+                }) { Text("Delete conversation") }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
+        )
+    }
 }
 
 @Composable
@@ -805,10 +1021,6 @@ fun EmptyPanel(message: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
-}
-
 private fun accessLine(id: ProviderId): String {
     val labels = ProviderAccess.profile(id).labels.joinToString(", ") { label ->
         when (label) {

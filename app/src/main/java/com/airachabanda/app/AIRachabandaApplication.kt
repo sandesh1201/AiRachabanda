@@ -22,8 +22,17 @@ import com.airachabanda.app.provider.openrouter.OpenRouterStatusStore
 import com.airachabanda.app.provider.openrouter.UrlConnectionTransport
 import com.airachabanda.app.security.AndroidKeystoreGateway
 import com.airachabanda.app.security.CredentialStore
+import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.security.KeystoreCredentialStore
 import java.io.File
+
+data class PendingDiscussion(
+    val conversationId: String,
+    val question: String,
+    val mode: ResearchMode,
+    val participants: Set<ProviderId>,
+)
 
 class AIRachabandaApplication : Application() {
     lateinit var container: AppContainer
@@ -104,4 +113,7 @@ class AppContainer(context: Application) {
     )
     val councilDao = database.councilDao()
     val discussionDao = database.discussionDao()
+
+    @Volatile
+    var pendingDiscussion: PendingDiscussion? = null
 }

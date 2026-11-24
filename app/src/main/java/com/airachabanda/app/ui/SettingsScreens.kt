@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +46,6 @@ import com.airachabanda.app.core.model.ImportDraft
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
-import com.airachabanda.app.provider.AccessLabel
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderRegistry
 import com.airachabanda.app.provider.claude.ClaudeAssistedLinks
@@ -58,27 +58,40 @@ fun SettingsRoot(
     contentPadding: PaddingValues,
 ) {
     val entries = listOf(
-        "accounts" to "Manage Accounts",
-        "plans" to "Subscription Plans",
-        "providers" to "AI Providers",
-        "usage" to "Usage & Limits",
-        "zerocost" to "Zero-Cost Mode",
-        "research" to "Research Preferences",
-        "notifications" to "Notifications",
-        "appearance" to "Appearance",
-        "privacy" to "Privacy & Security",
-        "storage" to "Storage",
-        "openrouter" to "OpenRouter",
-        "cloudflare" to "Cloudflare Workers AI",
-        "gemini" to "Gemini API",
-        "about" to "About",
+        "AI providers" to listOf(
+            "providers" to "Provider participation",
+            "accounts" to "Account declarations",
+            "plans" to "Subscription declarations",
+            "usage" to "Usage and limits",
+            "openrouter" to "OpenRouter",
+            "cloudflare" to "Cloudflare Workers AI",
+            "gemini" to "Gemini API",
+            "zerocost" to "Zero-cost policy",
+        ),
+        "Appearance" to listOf("appearance" to "Light, dark, and system"),
+        "Discussion defaults" to listOf("research" to "Default mode and round limit"),
+        "Research preferences" to listOf("research" to "Public research stays consent-based"),
+        "Privacy and security" to listOf("privacy" to "On-device storage and redaction"),
+        "Notifications" to listOf("notifications" to "Discussion notification"),
+        "Local storage" to listOf("storage" to "Delete local data"),
+        "About" to listOf("about" to "Version and limits"),
     )
-    LazyColumn(contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp)) }
-        items(entries.size) { index ->
-            val (route, label) = entries[index]
-            TextButton(onClick = { onOpen(route) }, modifier = Modifier.fillMaxWidth()) {
-                Text(label, modifier = Modifier.fillMaxWidth())
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item {
+            Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Zero-cost mode is on. This version does not offer a subscription, an advertisement, or a purchase.")
+        }
+        entries.forEach { (group, links) ->
+            item { Text(group, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp)) }
+            items(links.size) { index ->
+                val (route, label) = links[index]
+                TextButton(onClick = { onOpen(route) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(label, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
     }
@@ -134,7 +147,7 @@ fun SettingsDetail(
                     }
                 }
             }
-            "providers" -> ProviderAccessSettings(enabledProviders, onToggleParticipant)
+            "providers" -> ProviderAccessSettings(providers, enabledProviders, onToggleParticipant)
             "usage" -> {
                 Text("Usage & Limits", style = MaterialTheme.typography.headlineSmall)
                 Text("Quotas that have not been observed stay unknown. This screen does not invent remaining credits or reset times.")
@@ -150,7 +163,7 @@ fun SettingsDetail(
             "research" -> ResearchSettings(researchMode, maxRounds, onResearchMode, onMaxRounds)
             "notifications" -> {
                 Text("Notifications", style = MaterialTheme.typography.headlineSmall)
-                Text("Local notifications are not available in this version. Background provider calls are not running.")
+                Text("An active discussion can show a private notification with Pause, Resume, Stop, and Open. The lock screen uses a short public line and does not show the question. Android can still end the process after a force stop or reboot. The discussion does not start again by itself.")
             }
             "appearance" -> {
                 Text("Appearance", style = MaterialTheme.typography.headlineSmall)
@@ -196,7 +209,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.11.0. Free chat is assisted. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed.")
+                Text("Version 0.12.0. Free chat is assisted. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested.")
             }
         }
     }
@@ -278,8 +291,9 @@ private fun ResearchSettings(
     onMaxRounds: (Int) -> Unit,
 ) {
     var rounds by rememberSaveable(maxRounds) { mutableIntStateOf(maxRounds) }
-    Text("Research Preferences", style = MaterialTheme.typography.headlineSmall)
-    Text("These preferences are stored for a later research engine. Changing them does not start a provider request.")
+    Text("Discussion defaults", style = MaterialTheme.typography.headlineSmall)
+    Text("The selected mode is the default for a new conversation. The round limit is the automated request budget when you start a discussion. Saving these values does not contact a provider. Zero-cost rules stay on in every mode.")
+    Text(ModeGuide.summary(researchMode), style = MaterialTheme.typography.bodySmall)
     ResearchMode.entries.forEach { mode ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = researchMode == mode, onClick = { onResearchMode(mode) })
@@ -556,7 +570,13 @@ private fun DirectProviderSettings(
     var account by rememberSaveable { mutableStateOf("") }
     var secret by rememberSaveable { mutableStateOf("") }
     var confirm by rememberSaveable { mutableStateOf(false) }
+    var details by rememberSaveable { mutableStateOf(false) }
     Text(title, style = MaterialTheme.typography.headlineSmall)
+    Text(if (stored) "A credential is stored. The value is not shown." else "No credential is stored. This provider is not connected.")
+    TextButton(onClick = { details = !details }) {
+        Text(if (details) "Hide credential and billing details" else "Credential and billing details")
+    }
+    if (!details) return
     Text("Credential status: ${status.credential}")
     Text("Authentication status: ${status.authentication}")
     Text("Billing eligibility: ${status.billing}")
@@ -606,31 +626,37 @@ private fun DirectProviderSettings(
 
 @Composable
 private fun ProviderAccessSettings(
+    providers: List<ProviderConfig>,
     enabled: Set<ProviderId>,
     onToggle: (ProviderId, Boolean) -> Unit,
 ) {
     Text("AI Providers", style = MaterialTheme.typography.headlineSmall)
-    Text("Free chat is assisted. A free API is used only after its billing protection is established. Paid inference is not offered.")
+    Text("A provider is Available only when automated inference is actually enabled. Assisted chat, setup, and verification are separate. Stored credentials are not shown.")
+    Text("Zero-cost mode is on. Paid inference is not offered.")
     ProviderId.entries.forEach { id ->
         val profile = ProviderAccess.profile(id)
+        val config = providers.firstOrNull { it.providerId == id }
         val canToggle = ProviderAccess.active(id) == com.airachabanda.app.core.model.ParticipationMode.ASSISTED
+        val status = if (config == null) {
+            "Setup required"
+        } else {
+            ProviderPresentation.status(config, enabled = !canToggle || id in enabled)
+        }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
                 Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
-                Text(profile.labels.joinToString(", ") { label ->
-                    when (label) {
-                        AccessLabel.FREE_API -> "Free API available"
-                        AccessLabel.FREE_CHAT -> "Free chat available"
-                        AccessLabel.CONFIGURATION_REQUIRED -> "Configuration required"
-                        AccessLabel.BILLING_VERIFICATION_REQUIRED -> "Billing verification required"
-                        AccessLabel.LOCAL_INFERENCE -> "Local inference"
-                        AccessLabel.UNAVAILABLE -> "Unavailable"
-                    }
-                })
+                Text(status, style = MaterialTheme.typography.labelLarge)
+                config?.let { item ->
+                    val kind = ProviderPresentation.kind(item)
+                    if (kind != status) Text(kind, style = MaterialTheme.typography.bodySmall)
+                }
                 Text(profile.note, style = MaterialTheme.typography.bodySmall)
             }
             if (canToggle) {
-                Switch(checked = id in enabled, onCheckedChange = { onToggle(id, it) })
+                Switch(
+                    checked = id in enabled,
+                    onCheckedChange = { onToggle(id, it) },
+                )
             }
         }
     }

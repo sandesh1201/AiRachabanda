@@ -617,13 +617,15 @@ class OrchestrationEngine(
             council.updateTaskState(task.id, AssistedTaskState.BLOCKED.name, clock())
         }
         discussion.setDispatchHold(sessionId, "PAUSED", clock())
+        val message = "Paused. New tasks will not be dispatched. A running request has an unknown outcome and will not be retried. Remote provider processing was not confirmed as stopped."
         move(
             sessionId,
             SessionState.PAUSED,
-            "Paused. New tasks will not be dispatched. A running request has an unknown outcome and will not be retried. Remote provider processing was not confirmed as stopped.",
+            message,
             await = session.awaitState,
             resume = session.state,
         )
+        recordControl(session, "DISCUSSION_PAUSED", message)
         snapshot(sessionId)
     }
 
@@ -635,13 +637,15 @@ class OrchestrationEngine(
         }
         val target = session.resumeState?.let(SessionState::valueOf) ?: SessionState.AWAITING_USER_RESPONSE
         discussion.setDispatchHold(sessionId, "NONE", clock())
+        val message = "Session resumed. Completed work was kept. Requests with an unknown outcome were not retried."
         move(
             sessionId,
             target,
-            "Session resumed. Completed work was kept. Requests with an unknown outcome were not retried.",
+            message,
             await = session.awaitState,
             resume = session.resumeState,
         )
+        recordControl(session, "DISCUSSION_RESUMED", message)
         pump(sessionId)
         snapshot(sessionId)
     }
@@ -734,6 +738,7 @@ class OrchestrationEngine(
         } else {
             note(sessionId, message)
         }
+        recordControl(session, "DISCUSSION_FINISHED", message)
         snapshot(sessionId)
     }
 
@@ -848,7 +853,13 @@ class OrchestrationEngine(
         } else {
             "${person.providerId} is unavailable (${fault.name}). The discussion was not restarted."
         }
-        note(sessionId, "$scope ${limitations.joinToString(" ")}".trim())
+        val recorded = "$scope ${limitations.joinToString(" ")}".trim()
+        note(sessionId, recorded)
+        recordControl(
+            session,
+            if (fault == ProviderFault.SESSION_SKIP) "PARTICIPANT_SKIPPED" else "PARTICIPANT_FAULT",
+            recorded,
+        )
         if (session.state != SessionState.PAUSED.name) pump(sessionId)
         snapshot(sessionId)
     }
@@ -1771,6 +1782,19 @@ class OrchestrationEngine(
         checkpoint(sessionId, to, message)
     }
 
+    private suspend fun recordControl(session: ResearchSessionEntity, type: String, summary: String) {
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                providerId = null,
+                type = type,
+                summary = summary,
+                createdAtEpochMs = clock(),
+            ),
+        )
+    }
+
     private suspend fun note(sessionId: String, message: String) {
         val session = fresh(sessionId)
         discussion.updateSessionProgress(
@@ -2185,7 +2209,12 @@ class OrchestrationEngine(
                 conversationId = session.conversationId,
                 providerId = null,
                 type = "RESEARCH_RETRIEVED",
-                summary = "Retrieved ${record.title.ifBlank { "a public source" }}. Published ${record.published.ifBlank { "date not in the source" }}. Retrieved $now. Verification ${record.verification}.",
+                summary = buildString {
+                    append("Retrieved ${record.title.ifBlank { "a public source" }}. ")
+                    append("Published ${record.published.ifBlank { "date not in the source" }}. ")
+                    append("Retrieved $now. Verification ${record.verification}.")
+                    if (record.canonical.startsWith("https://")) append(" Source ${record.canonical}")
+                },
                 createdAtEpochMs = now,
             ),
         )
@@ -2213,6 +2242,7 @@ class OrchestrationEngine(
             move(session.id, SessionState.CANCELLED, reason)
         }
         onDiscussionStopped(session.conversationId)
+        recordControl(session, "DISCUSSION_STOPPED", reason)
     }
 
     private fun faultRow(

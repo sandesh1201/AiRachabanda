@@ -2,7 +2,7 @@
 
 Status: active. These requirements are mandatory for every milestone.
 Source: project owner instructions through Milestone 005A.
-Last updated: 23 November 2026.
+Last updated: 24 November 2026.
 
 ## Identity
 
@@ -122,6 +122,8 @@ Milestone 009 copies selected or shared files into app storage and extracts text
 Milestone 010 renders PDF, DOCX, XLSX, PPTX, CSV, TXT, Markdown, and JSON on the device from a structured document. The files are real documents, not renamed text. Formulas that pass a local allow-list can store a locally calculated cache. Macros, external workbook connections, and arbitrary code are not created. A generated file is not an AI provider response. No AI inference request is added.
 
 Milestone 011 keeps a discussion going when one provider is unavailable, disabled, or waiting. Unfinished work can move to another eligible participant. Pause, resume, stop, finish now, and skip stay on the discussion screen. Room schema version 9 records the control generation and the fault. A stopped or paused discussion is not started again by itself. No AI inference request is added.
+
+Milestone 012 keeps that behavior and presents it as the main conversation. Light, dark, and system appearance share one Material 3 theme. Home starts a discussion from a question. Stop asks for confirmation. Custom mode shows the participants and round limit the engine uses. Activity and history read stored records. The discussion foreground service stays a user-started special-use service and does not continue after a force stop. No AI inference request is added. Physical foldable hardware has not been tested.
 
 ## Toolchain pin for Milestone 003
 

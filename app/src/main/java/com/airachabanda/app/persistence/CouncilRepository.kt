@@ -32,6 +32,11 @@ class CouncilRepository(
     fun observeConversations(): Flow<List<Conversation>> =
         dao.observeConversations().map { rows -> rows.map { it.toModel() } }
 
+    fun observeDiscussionStates(): Flow<Map<String, String>> =
+        dao.observeDiscussionStates().map { rows ->
+            rows.groupBy { it.conversationId }.mapValues { (_, states) -> states.first().state }
+        }
+
     fun observeConversation(id: String): Flow<Conversation?> =
         dao.observeConversation(id).map { it?.toModel() }
 
