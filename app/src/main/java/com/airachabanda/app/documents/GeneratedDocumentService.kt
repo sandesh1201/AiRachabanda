@@ -46,6 +46,13 @@ class GeneratedDocumentService(
         cancelled += id
     }
 
+    suspend fun cancelPending(conversationId: String) {
+        council.generatedDocuments(conversationId).filter { it.status == "GENERATING" }.forEach { row ->
+            cancel(row.id)
+            council.updateGeneratedDocument(row.id, "CANCELLED", 0, "", "The user stopped the discussion. This generation was cancelled.")
+        }
+    }
+
     suspend fun generate(
         conversationId: String,
         title: String,
@@ -96,6 +103,10 @@ class GeneratedDocumentService(
         if (!directory.mkdirs() && !directory.isDirectory) {
             council.updateGeneratedDocument(id, "FAILED", 0, "", "The document could not be stored.")
             return "The document could not be stored."
+        }
+        if (id in cancelled) {
+            council.updateGeneratedDocument(id, "CANCELLED", 0, "", "The user stopped the discussion. This generation was cancelled.")
+            return "The user stopped the discussion. This generation was cancelled."
         }
         val file = File(directory, filename)
         file.writeBytes(outcome.bytes)

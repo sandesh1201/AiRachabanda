@@ -121,6 +121,8 @@ Milestone 009 copies selected or shared files into app storage and extracts text
 
 Milestone 010 renders PDF, DOCX, XLSX, PPTX, CSV, TXT, Markdown, and JSON on the device from a structured document. The files are real documents, not renamed text. Formulas that pass a local allow-list can store a locally calculated cache. Macros, external workbook connections, and arbitrary code are not created. A generated file is not an AI provider response. No AI inference request is added.
 
+Milestone 011 keeps a discussion going when one provider is unavailable, disabled, or waiting. Unfinished work can move to another eligible participant. Pause, resume, stop, finish now, and skip stay on the discussion screen. Room schema version 9 records the control generation and the fault. A stopped or paused discussion is not started again by itself. No AI inference request is added.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

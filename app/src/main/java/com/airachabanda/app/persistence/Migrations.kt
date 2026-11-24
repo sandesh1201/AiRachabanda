@@ -364,4 +364,31 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_generated_documents_conversationId` ON `generated_documents` (`conversationId`)")
         }
     }
+
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `controlGeneration` INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `dispatchHold` TEXT NOT NULL DEFAULT 'NONE'")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `generation` INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `dispatchOutcome` TEXT NOT NULL DEFAULT 'NOT_SENT'")
+            db.execSQL("ALTER TABLE `participants` ADD COLUMN `availability` TEXT NOT NULL DEFAULT 'ELIGIBLE'")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `participant_faults` (
+                `id` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL,
+                `participantId` TEXT NOT NULL,
+                `providerId` TEXT NOT NULL,
+                `fault` TEXT NOT NULL,
+                `outcome` TEXT NOT NULL,
+                `reassignedTo` TEXT NOT NULL,
+                `limitation` TEXT NOT NULL,
+                `createdAtEpochMs` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`sessionId`) REFERENCES `research_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_participant_faults_sessionId` ON `participant_faults` (`sessionId`)")
+        }
+    }
 }

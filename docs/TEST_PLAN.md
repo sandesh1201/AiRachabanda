@@ -192,6 +192,16 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - An empty name, a cancelled render, a blocked storage directory, a second version, deletion of one version, and a database restart are covered.
 - The generated text is labeled as a local render. It is not a live model response.
 
+## Milestone 011 checks
+
+- One synthetic participant can fail while the other participants keep their tasks. The session is not replaced.
+- A Devil's Advocate task can move to another eligible participant. An incapable or paid candidate is not substituted.
+- One participant discloses that independent multi-model review is unavailable. No participant discloses the local tools and does not invent a response.
+- Pause marks a running task unknown and does not retry it. Stop rejects a late response. Finish now says the answer is not fully verified.
+- Skipping a participant does not change the global provider configuration. An assisted waiting participant stays waiting.
+- A paused session and its request budget survive closing and reopening the database.
+- The lock-screen notification text does not include the fixture question.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

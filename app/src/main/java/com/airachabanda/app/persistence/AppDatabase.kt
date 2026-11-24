@@ -109,6 +109,10 @@ data class ResearchSessionEntity(
     val planNote: String = "",
     @ColumnInfo(defaultValue = "0")
     val verificationRequired: Boolean = false,
+    @ColumnInfo(defaultValue = "1")
+    val controlGeneration: Int = 1,
+    @ColumnInfo(defaultValue = "'NONE'")
+    val dispatchHold: String = "NONE",
 )
 
 @Entity(
@@ -153,6 +157,10 @@ data class ResearchTaskEntity(
     val deadlineEpochMs: Long? = null,
     @ColumnInfo(defaultValue = "0")
     val taskBudget: Int = 0,
+    @ColumnInfo(defaultValue = "1")
+    val generation: Int = 1,
+    @ColumnInfo(defaultValue = "'NOT_SENT'")
+    val dispatchOutcome: String = "NOT_SENT",
 )
 
 @Entity(
@@ -357,6 +365,12 @@ interface CouncilDao {
     @Query("UPDATE research_tasks SET state = :state, updatedAtEpochMs = :updatedAt WHERE id = :id")
     suspend fun updateTaskState(id: String, state: String, updatedAt: Long)
 
+    @Query("UPDATE research_tasks SET dispatchOutcome = :outcome, updatedAtEpochMs = :updatedAt WHERE id = :id")
+    suspend fun updateTaskOutcome(id: String, outcome: String, updatedAt: Long)
+
+    @Query("SELECT * FROM research_sessions WHERE conversationId = :conversationId ORDER BY createdAtEpochMs DESC LIMIT 1")
+    fun observeLatestSession(conversationId: String): Flow<List<ResearchSessionEntity>>
+
     @Query("UPDATE research_tasks SET prompt = :prompt, state = :state, updatedAtEpochMs = :updatedAt WHERE id = :id")
     suspend fun updateTaskContent(id: String, prompt: String, state: String, updatedAt: Long)
 
@@ -529,8 +543,9 @@ data class GeneratedDocumentEntity(
         ProviderCompletionEntity::class,
         TaskDependencyEntity::class,
         GeneratedDocumentEntity::class,
+        ParticipantFaultEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

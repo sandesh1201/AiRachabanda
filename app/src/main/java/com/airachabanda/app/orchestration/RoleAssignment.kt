@@ -263,5 +263,9 @@ object SessionTransitions {
         SessionState.FAILED to emptySet(),
     )
 
-    fun permits(from: SessionState, to: SessionState): Boolean = to in allowed.getValue(from)
+    fun permits(from: SessionState, to: SessionState): Boolean {
+        if (from in terminal) return false
+        if (to == SessionState.COMPLETED || to == SessionState.SYNTHESIS) return true
+        return to in allowed.getValue(from)
+    }
 }

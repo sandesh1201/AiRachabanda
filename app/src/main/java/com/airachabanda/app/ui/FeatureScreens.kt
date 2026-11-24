@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -155,6 +156,9 @@ fun CouncilScreen(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onFinish: () -> Unit,
+    onSkipParticipant: (String) -> Unit,
+    notificationsAllowed: Boolean,
     onAddContext: (String, Boolean) -> Unit,
     onFollowUp: (String) -> Unit,
     onAnotherReview: () -> Unit,
@@ -327,14 +331,21 @@ fun CouncilScreen(
                 Text("Discussion", style = MaterialTheme.typography.titleMedium)
                 Text("Stage: ${stage?.stage ?: "No session"}")
                 Text(stage?.statusNote ?: "Start a discussion to assign participants. No provider has been contacted.")
+                if (!stage?.continuityNote.isNullOrBlank()) Text(stage?.continuityNote.orEmpty())
                 if (stage?.assistedOnly != false) {
                     Text("Only assisted providers are available. You need to submit each prompt yourself and import the response. No provider is researching inside this app.")
                 }
                 Text("Participants")
-                if (stage?.participants.isNullOrEmpty()) {
+                if (stage?.participantControls.isNullOrEmpty()) {
                     Text("No participants are assigned yet.")
                 } else {
-                    stage?.participants.orEmpty().forEach { Text(it) }
+                    stage?.participantControls.orEmpty().forEach { person ->
+                        Text("${person.label}. ${person.availability}.")
+                        if (person.availability == "ELIGIBLE") {
+                            TextButton(onClick = { onSkipParticipant(person.id) }) { Text("Skip ${person.label} for this discussion") }
+                        }
+                    }
+                    Text("Skipping a participant applies to this discussion. It does not disable that provider in Accounts.")
                 }
                 Text("Roles")
                 if (stage?.roles.isNullOrEmpty()) Text("No roles are assigned yet.") else stage?.roles.orEmpty().forEach { Text(it) }
@@ -430,7 +441,21 @@ fun CouncilScreen(
                     Button(onClick = { onStart(question, selectedProviders) }, enabled = question.isNotBlank()) { Text("Start discussion") }
                     OutlinedButton(onClick = onAdvance) { Text("Advance") }
                 }
+                var instruction by rememberSaveable { mutableStateOf("") }
+                OutlinedTextField(
+                    value = instruction,
+                    onValueChange = { instruction = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Instruction") },
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            onAddContext(instruction, false)
+                            instruction = ""
+                        },
+                        enabled = instruction.isNotBlank(),
+                    ) { Text("Add instruction") }
                     OutlinedButton(onClick = { onAddContext(draft, false) }, enabled = draft.isNotBlank()) { Text("Add context") }
                     OutlinedButton(onClick = { onAddContext(draft, true) }, enabled = draft.isNotBlank()) { Text("Correct assumption") }
                 }
@@ -504,6 +529,14 @@ fun CouncilScreen(
                 }
             }
         }
+        DiscussionControls(
+            stage = stage,
+            notificationsAllowed = notificationsAllowed,
+            onPause = onPause,
+            onResume = onResume,
+            onStop = onStop,
+            onFinish = onFinish,
+        )
         if (expanded) {
             Row(
                 Modifier.weight(1f).fillMaxWidth(),
@@ -521,6 +554,27 @@ fun CouncilScreen(
                 answer()
             }
         }
+    }
+}
+
+@Composable
+private fun DiscussionControls(
+    stage: CouncilStage?,
+    notificationsAllowed: Boolean,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onStop: () -> Unit,
+    onFinish: () -> Unit,
+) {
+    Text("Discussion controls. Active ${stage?.activeParticipantCount ?: 0}. Completed ${stage?.completedTasks ?: 0}. Pending ${stage?.pendingTasks ?: 0}.")
+    if (!notificationsAllowed) {
+        Text("Notification permission is off. This discussion continues while the app process is running. Android can still stop it after a force stop or reboot.")
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onPause) { Text("Pause") }
+        OutlinedButton(onClick = onResume) { Text("Resume") }
+        Button(onClick = onStop) { Text("Stop") }
+        OutlinedButton(onClick = onFinish) { Text("Finish now") }
     }
 }
 

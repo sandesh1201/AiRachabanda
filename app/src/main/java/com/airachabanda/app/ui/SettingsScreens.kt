@@ -196,7 +196,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.10.0. Free chat is assisted. Attachments and generated documents stay on this device. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed.")
+                Text("Version 0.11.0. Free chat is assisted. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed.")
             }
         }
     }

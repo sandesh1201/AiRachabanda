@@ -164,6 +164,7 @@ class Milestone010Test {
                 Migrations.MIGRATION_5_6,
                 Migrations.MIGRATION_6_7,
                 Migrations.MIGRATION_7_8,
+                Migrations.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()

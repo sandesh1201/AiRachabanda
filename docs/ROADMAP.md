@@ -24,6 +24,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 008: Public research can use Wikimedia, arXiv, and the Federal Register after consent. A retrieved page is not treated as proof. No AI inference request is added.
 - Milestone 009: Local attachment import, extraction, and source-linked document evidence. OCR is not installed. No file is uploaded and no AI inference request is added.
 - Milestone 010: Local PDF, DOCX, XLSX, PPTX, CSV, TXT, Markdown, and JSON generation. Files stay on the device. No AI inference request is added.
+- Milestone 011: Provider faults, task reassignment, and pause, resume, stop, and finish controls. Room schema version 9. No live inference request is added.
 
 ## Next
 
@@ -45,4 +46,11 @@ Remaining Milestone 008 research improvements, recorded here and not rewritten:
 - Final answers that retain unresolved objections.
 - The held-out accuracy benchmark.
 - Folded and unfolded Galaxy Z Fold 6 verification on hardware or a foldable emulator.
-- Notifications. Attachments and generated documents are stored locally.
+- Unicode PDF font support.
+- Microsoft Office visual compatibility.
+- Editable chart improvements.
+- OCR and live vision.
+- Research security audit.
+- Live AI provider configuration.
+- Real multi-model accuracy benchmarking.
+- Notifications other than the discussion control. Attachments and generated documents are stored locally.

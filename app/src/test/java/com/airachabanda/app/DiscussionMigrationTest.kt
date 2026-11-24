@@ -78,6 +78,7 @@ class DiscussionMigrationTest {
                 Migrations.MIGRATION_5_6,
                 Migrations.MIGRATION_6_7,
                 Migrations.MIGRATION_7_8,
+                Migrations.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -95,10 +96,12 @@ class DiscussionMigrationTest {
                 assertEquals("unknown", cursor.getString(2))
             }
             migrated.openHelper.writableDatabase.query(
-                "SELECT state FROM research_sessions WHERE id = 's1'",
+                "SELECT state, controlGeneration, dispatchHold FROM research_sessions WHERE id = 's1'",
             ).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("AWAITING_USER_RESPONSE", cursor.getString(0))
+                assertEquals(1, cursor.getInt(1))
+                assertEquals("NONE", cursor.getString(2))
             }
             migrated.openHelper.writableDatabase.query(
                 "SELECT state FROM research_tasks WHERE id = 't1'",
@@ -124,6 +127,7 @@ class DiscussionMigrationTest {
                 "request_budget_entries",
                 "protocol_actions",
                 "provider_completions",
+                "participant_faults",
             ).forEach { name -> assertTrue(name, tables.contains(name)) }
         } finally {
             migrated.close()

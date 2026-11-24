@@ -197,4 +197,25 @@ interface DiscussionDao {
         """,
     )
     suspend fun dependenciesForSession(sessionId: String): List<TaskDependencyEntity>
+
+    @Query("UPDATE research_sessions SET dispatchHold = :hold, updatedAtEpochMs = :updatedAt WHERE id = :id")
+    suspend fun setDispatchHold(id: String, hold: String, updatedAt: Long)
+
+    @Query(
+        """
+        UPDATE research_sessions
+        SET controlGeneration = controlGeneration + 1, dispatchHold = :hold, updatedAtEpochMs = :updatedAt
+        WHERE id = :id
+        """,
+    )
+    suspend fun bumpControl(id: String, hold: String, updatedAt: Long)
+
+    @Query("UPDATE participants SET availability = :availability WHERE id = :id")
+    suspend fun updateParticipantAvailability(id: String, availability: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertFault(entity: ParticipantFaultEntity)
+
+    @Query("SELECT * FROM participant_faults WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC")
+    suspend fun faults(sessionId: String): List<ParticipantFaultEntity>
 }

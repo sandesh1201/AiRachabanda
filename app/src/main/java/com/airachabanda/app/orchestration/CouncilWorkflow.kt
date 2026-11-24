@@ -41,6 +41,15 @@ data class CouncilStage(
     val taskGraph: List<String> = emptyList(),
     val claimLines: List<String> = emptyList(),
     val researchLines: List<String> = emptyList(),
+    val participantControls: List<ParticipantControl> = emptyList(),
+    val activeParticipantCount: Int = 0,
+    val continuityNote: String = "",
+)
+
+data class ParticipantControl(
+    val id: String,
+    val label: String,
+    val availability: String,
 )
 
 class CouncilWorkflow(
@@ -177,6 +186,16 @@ class CouncilWorkflow(
             },
             claimLines = claimLines,
             researchLines = researchLines(evidence, council.eventsForConversation(session.conversationId)),
+            participantControls = people.map { person ->
+                val name = ProviderRegistry.definition(ProviderId.valueOf(person.providerId)).displayName
+                ParticipantControl(person.id, name, person.availability)
+            },
+            activeParticipantCount = people.count { it.availability == "ELIGIBLE" },
+            continuityNote = when {
+                people.isEmpty() -> "No AI participant is available. Independent multi-model review is unavailable. Local document processing, mathematical verification, public-source research, and document generation remain available. No AI response was invented."
+                people.count { it.availability == "ELIGIBLE" } <= 1 -> "Independent multi-model review is unavailable because only one participant is eligible."
+                else -> ""
+            },
         )
     }
 
@@ -297,6 +316,7 @@ class CouncilWorkflow(
     suspend fun importTask(conversationId: String, taskId: String, body: String, declaredModel: String?): String {
         val session = council.latestSession(conversationId) ?: return "No discussion is open."
         val snapshot = engine.recordParticipantResponse(session.id, taskId, body, declaredModel)
+        if (snapshot.statusNote.contains("not recorded") || snapshot.statusNote.contains("late response")) return snapshot.statusNote
         return "Imported a user-supplied response. It is not authenticated. Stage: ${stageLabel(snapshot.state.name)}."
     }
 
@@ -436,7 +456,18 @@ class CouncilWorkflow(
 
     suspend fun stop(conversationId: String): String {
         val session = council.latestSession(conversationId) ?: return "No discussion is open."
-        return "Stage: ${stageLabel(engine.cancel(session.id).state.name)}."
+        val snapshot = engine.cancel(session.id)
+        return "Stage: ${stageLabel(snapshot.state.name)}. ${snapshot.statusNote}"
+    }
+
+    suspend fun finishNow(conversationId: String): String {
+        val session = council.latestSession(conversationId) ?: return "No discussion is open."
+        return engine.finishNow(session.id).statusNote
+    }
+
+    suspend fun skipParticipant(conversationId: String, participantId: String): String {
+        val session = council.latestSession(conversationId) ?: return "No discussion is open."
+        return engine.skipParticipant(session.id, participantId).statusNote
     }
 
     suspend fun skip(conversationId: String, taskId: String) {

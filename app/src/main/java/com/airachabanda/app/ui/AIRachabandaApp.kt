@@ -297,6 +297,25 @@ private fun CouncilRoute(
     val documents by model.documents.collectAsState()
     val documentPreview by model.documentPreview.collectAsState()
     val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(conversationId) {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    LaunchedEffect(conversationId, stage?.sessionId, stage?.stage) {
+        val id = conversationId ?: return@LaunchedEffect
+        val current = stage ?: return@LaunchedEffect
+        if (current.sessionId == null) return@LaunchedEffect
+        if (current.stage == "Stopped" || current.stage == "Completed" || current.stage == "Failed") {
+            com.airachabanda.app.discussion.DiscussionRuntime.dismiss(context, id)
+        } else {
+            com.airachabanda.app.discussion.DiscussionRuntime.show(context, id)
+        }
+    }
     val pendingSave = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         val id = pendingSave.value
@@ -342,6 +361,9 @@ private fun CouncilRoute(
         onPause = { conversationId?.let { model.pause(it, notice) } },
         onResume = { conversationId?.let { model.resume(it, notice) } },
         onStop = { conversationId?.let { model.stop(it, notice) } },
+        onFinish = { conversationId?.let { model.finish(it, notice) } },
+        onSkipParticipant = { participantId -> conversationId?.let { model.skipParticipant(it, participantId, notice) } },
+        notificationsAllowed = com.airachabanda.app.discussion.DiscussionRuntime.allowed(context),
         onAddContext = { text, invalidate -> conversationId?.let { model.addContext(it, text, invalidate, notice) } },
         onFollowUp = { text -> conversationId?.let { model.requestFollowUp(it, text, notice) } },
         onAnotherReview = { conversationId?.let { model.requestAnotherReview(it, notice) } },

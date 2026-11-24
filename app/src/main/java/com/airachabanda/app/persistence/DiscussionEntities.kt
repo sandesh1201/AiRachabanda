@@ -25,6 +25,8 @@ data class ParticipantEntity(
     val participationMode: String,
     val billingEligibility: String,
     val createdAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "'ELIGIBLE'")
+    val availability: String = "ELIGIBLE",
 )
 
 @Entity(
@@ -326,4 +328,28 @@ data class ProviderCompletionEntity(
     val createdAtEpochMs: Long,
     @androidx.room.ColumnInfo(defaultValue = "'COMPLETED'")
     val disposition: String = "COMPLETED",
+)
+
+@Entity(
+    tableName = "participant_faults",
+    foreignKeys = [
+        ForeignKey(
+            entity = ResearchSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sessionId")],
+)
+data class ParticipantFaultEntity(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val participantId: String,
+    val providerId: String,
+    val fault: String,
+    val outcome: String,
+    val reassignedTo: String,
+    val limitation: String,
+    val createdAtEpochMs: Long,
 )

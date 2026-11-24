@@ -48,6 +48,7 @@ class AppContainer(context: Application) {
         Migrations.MIGRATION_5_6,
         Migrations.MIGRATION_6_7,
         Migrations.MIGRATION_7_8,
+        Migrations.MIGRATION_8_9,
     )
         .build()
 
@@ -99,6 +100,7 @@ class AppContainer(context: Application) {
             ids = { java.util.UUID.randomUUID().toString() },
         ),
         attachmentContext = { conversationId, sessionId -> attachments.prepare(conversationId, sessionId) },
+        onDiscussionStopped = { conversationId -> documents.cancelPending(conversationId) },
     )
     val councilDao = database.councilDao()
     val discussionDao = database.discussionDao()

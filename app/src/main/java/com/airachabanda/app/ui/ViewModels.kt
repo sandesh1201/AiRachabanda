@@ -110,7 +110,13 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
     val documentPreview: MutableStateFlow<String> = MutableStateFlow("")
     val stage: StateFlow<CouncilStage?> = kotlinx.coroutines.flow.combine(selectedConversationId, revision) { id, _ -> id }
         .flatMapLatest { id ->
-            if (id == null) flowOf<CouncilStage?>(null) else kotlinx.coroutines.flow.flow { emit(workflow.inspect(id)) }
+            if (id == null) {
+                flowOf<CouncilStage?>(null)
+            } else {
+                container.councilDao.observeLatestSession(id).flatMapLatest {
+                    kotlinx.coroutines.flow.flow { emit(workflow.inspect(id)) }
+                }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -319,6 +325,20 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
     fun stop(conversationId: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
             onResult(workflow.stop(conversationId))
+            refresh()
+        }
+    }
+
+    fun finish(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.finishNow(conversationId))
+            refresh()
+        }
+    }
+
+    fun skipParticipant(conversationId: String, participantId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.skipParticipant(conversationId, participantId))
             refresh()
         }
     }
