@@ -133,6 +133,8 @@ Milestone 015 keeps schema version 9 and the billing gates. Provider settings na
 
 Milestone 015A keeps schema version 9. Each provider has an in-app setup screen. Credentials are entered there and stored in Android Keystore. A subscription declaration does not authorize an API. No live inference request is added by the milestone itself.
 
+Milestone 015B keeps schema version 9. The provider screen asks for an API key or official sign-in, then Connect. Technical diagnostics stay under Advanced details. Billing gates stay in place. No live inference request is added by the milestone itself.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

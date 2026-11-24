@@ -241,6 +241,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - A Claude subscription declaration can enable assisted participation and still says a consumer sign-in is not confirmed.
 - Redaction still removes an API-key assignment from a log line.
 
+## Milestone 015B checks
+
+- Assisted chat, a stored unverified key, verified automation, blocked billing, exhausted quota, and local inference map to the simple connection states.
+- Ready is withheld when automation is off, even if a fixture says free eligibility is verified.
+- Cloudflare account discovery accepts one fixture account and skips a token that lists two. Auto Select uses the known Gemini free model and rejects an unknown-price id.
+- No live provider call is part of these checks.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

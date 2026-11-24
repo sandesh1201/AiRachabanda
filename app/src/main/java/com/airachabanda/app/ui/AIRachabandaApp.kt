@@ -234,6 +234,7 @@ fun AIRachabandaApp(
                     val openRouterStatus by model.openRouterStatus.collectAsState()
                     val directCredentials by model.directCredentials.collectAsState()
                     val enabled by model.enabledParticipants.collectAsState()
+                    val stored by model.storedProviders.collectAsState()
                     val geminiVerification by model.geminiVerification.collectAsState()
                     SettingsDetail(
                         section = entry.arguments?.getString("section").orEmpty(),
@@ -262,6 +263,7 @@ fun AIRachabandaApp(
                         enabledProviders = enabled,
                         onToggleParticipant = model::setParticipantEnabled,
                         onConfigure = { id -> navController.navigate("settings/setup/${id.name}") },
+                        storedProviders = stored,
                         contentPadding = padding,
                         limits = limits,
                         onSaveLimits = model::setDiscussionLimits,
@@ -298,7 +300,15 @@ fun AIRachabandaApp(
                                 when (id) {
                                     ProviderId.OPENROUTER -> model.saveOpenRouterKey(values["api-key"].orEmpty()) { message -> notice(message) }
                                     ProviderId.GEMINI -> model.saveGemini(values["api-key"].orEmpty()) { message -> notice(message) }
-                                    ProviderId.CLOUDFLARE -> model.saveCloudflare(values["account-id"].orEmpty(), values["api-token"].orEmpty()) { message -> notice(message) }
+                                    ProviderId.CLOUDFLARE -> {
+                                        val account = values["account-id"].orEmpty()
+                                        val token = values["api-token"].orEmpty()
+                                        if (account.matches(Regex("^[a-fA-F0-9]{32}$"))) {
+                                            model.saveCloudflare(account, token) { message -> notice(message) }
+                                        } else {
+                                            model.saveCloudflareToken(token) { message -> notice(message) }
+                                        }
+                                    }
                                     ProviderId.GROQ -> model.saveGroq(values["api-key"].orEmpty()) { message -> notice(message) }
                                     else -> notice("This provider does not take an API credential.")
                                 }

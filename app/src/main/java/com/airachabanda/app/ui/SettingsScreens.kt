@@ -125,6 +125,7 @@ fun SettingsDetail(
     enabledProviders: Set<ProviderId>,
     onToggleParticipant: (ProviderId, Boolean) -> Unit,
     onConfigure: (ProviderId) -> Unit = {},
+    storedProviders: Set<ProviderId> = emptySet(),
     contentPadding: PaddingValues,
     limits: com.airachabanda.app.orchestration.DiscussionBudgets = com.airachabanda.app.orchestration.DiscussionBudgets.standard(),
     onSaveLimits: (com.airachabanda.app.orchestration.DiscussionBudgets) -> Unit = {},
@@ -151,7 +152,7 @@ fun SettingsDetail(
                     }
                 }
             }
-            "providers" -> ProviderAccessSettings(providers, enabledProviders, onToggleParticipant, onConfigure)
+            "providers" -> ProviderAccessSettings(providers, enabledProviders, onToggleParticipant, onConfigure, storedProviders)
             "usage" -> {
                 Text("Usage & Limits", style = MaterialTheme.typography.headlineSmall)
                 Text("Quotas that have not been observed stay unknown. This screen does not invent remaining credits or reset times.")
@@ -213,7 +214,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.15.1. Provider setup stays in this app. Free chat is assisted. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
+                Text("Version 0.15.2. Setup asks for a key or official sign-in. Free chat is assisted. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
             }
         }
     }
@@ -659,11 +660,12 @@ private fun ProviderAccessSettings(
     enabled: Set<ProviderId>,
     onToggle: (ProviderId, Boolean) -> Unit,
     onConfigure: (ProviderId) -> Unit,
+    storedProviders: Set<ProviderId> = emptySet(),
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("All") }
     Text("AI Providers", style = MaterialTheme.typography.headlineSmall)
-    Text("Set up each provider in the app. Ready for automated participation appears only when free eligibility is verified. Stored credentials are not shown.")
+    Text("Choose a provider, enter a key or use its official sign-in, then tap Connect. Ready appears only after free access is verified. Stored keys are not shown.")
     Text("Zero-cost mode is on. Paid inference is not offered.")
     OutlinedTextField(
         value = query,
@@ -688,9 +690,13 @@ private fun ProviderAccessSettings(
         val config = providers.firstOrNull { it.providerId == id }
         val canToggle = ProviderAccess.active(id) == com.airachabanda.app.core.model.ParticipationMode.ASSISTED
         val status = if (config == null) {
-            "Not configured"
+            ConnectionPresentation.NOT_CONNECTED
         } else {
-            ProviderPresentation.status(config, enabled = !canToggle || id in enabled)
+            ConnectionPresentation.state(
+                config,
+                enabled = !canToggle || id in enabled,
+                credentialStored = id in storedProviders,
+            )
         }
         val configured = config != null && config.accountChoice != com.airachabanda.app.core.model.AccountChoice.NOT_CONFIGURED
         val shown = when (filter) {
@@ -705,7 +711,7 @@ private fun ProviderAccessSettings(
             Column(Modifier.weight(1f)) {
                 Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
                 Text(status, style = MaterialTheme.typography.labelLarge)
-                Text(ProviderPresentation.blocker(status), style = MaterialTheme.typography.bodySmall)
+                Text(ConnectionPresentation.explanation(status, id), style = MaterialTheme.typography.bodySmall)
                 config?.let { item ->
                     val kind = ProviderPresentation.kind(item)
                     if (kind != status) Text(kind, style = MaterialTheme.typography.bodySmall)

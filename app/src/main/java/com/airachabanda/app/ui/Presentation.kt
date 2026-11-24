@@ -5,6 +5,7 @@ import com.airachabanda.app.core.model.BillingEligibility
 import com.airachabanda.app.core.model.ParticipationMode
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ResearchMode
+import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.provider.AccessLabel
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderAccessMode
@@ -60,7 +61,9 @@ object ProviderPresentation {
             if (AccessLabel.BILLING_VERIFICATION_REQUIRED in labels && AccessLabel.FREE_CHAT !in labels) {
                 return "Verification required"
             }
-            return "Credential stored"
+            if (credentialStored) return "Credential stored"
+            if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
+            return "Not configured"
         }
         if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
         if (config.participationMode == ParticipationMode.UNAVAILABLE || AccessLabel.UNAVAILABLE in labels) {
@@ -105,6 +108,70 @@ object ProviderPresentation {
         "SYNTHESIS" -> "Synthesis"
         "COLLECTING_RESPONSES" -> "Collecting responses"
         else -> state.replace('_', ' ').lowercase().replaceFirstChar { it.titlecase() }
+    }
+}
+
+object ConnectionPresentation {
+    const val NOT_CONNECTED = "Not connected"
+    const val CONNECTING = "Connecting"
+    const val READY = "Ready"
+    const val ASSISTED_CHAT = "Assisted chat"
+    const val FREE_ACCESS_UNAVAILABLE = "Free access unavailable"
+    const val TEMPORARILY_UNAVAILABLE = "Temporarily unavailable"
+    const val SETUP_REQUIRED = "Setup required"
+
+    fun state(
+        config: ProviderConfig,
+        enabled: Boolean = true,
+        quotaExhausted: Boolean = false,
+        credentialStored: Boolean = false,
+        authenticationRequired: Boolean = false,
+        connecting: Boolean = false,
+    ): String {
+        if (connecting) return CONNECTING
+        if (quotaExhausted) return TEMPORARILY_UNAVAILABLE
+        if (config.billingEligibility == BillingEligibility.PAID || config.billingEligibility == BillingEligibility.BLOCKED) {
+            return FREE_ACCESS_UNAVAILABLE
+        }
+        val modes = ProviderAccess.profile(config.providerId).modes
+        val verified = config.billingEligibility == BillingEligibility.VERIFIED_FREE ||
+            config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
+        val assisted = ProviderAccessMode.FREE_ASSISTED_CHAT in modes
+        val automated = ProviderAccessMode.FREE_AUTOMATED_API in modes
+        if (verified && config.automatedInferenceEnabled && enabled && automated) return READY
+        if (ProviderAccessMode.LOCAL_INFERENCE in modes) return TEMPORARILY_UNAVAILABLE
+        if (authenticationRequired) return SETUP_REQUIRED
+        if (automated && credentialStored && !verified) return SETUP_REQUIRED
+        if (verified && automated && !config.automatedInferenceEnabled) {
+            if (assisted && enabled) return ASSISTED_CHAT
+            return SETUP_REQUIRED
+        }
+        if (automated && !assisted && !credentialStored) return NOT_CONNECTED
+        if (assisted && !enabled) return NOT_CONNECTED
+        if (assisted) return ASSISTED_CHAT
+        if (config.participationMode == ParticipationMode.UNAVAILABLE || AccessLabel.UNAVAILABLE in ProviderAccess.profile(config.providerId).labels) {
+            return TEMPORARILY_UNAVAILABLE
+        }
+        return NOT_CONNECTED
+    }
+
+    fun explanation(state: String, providerId: ProviderId): String = when (state) {
+        CONNECTING -> "Checking this provider. No paid request is sent."
+        READY -> "Free access is verified. This provider can join the Council."
+        ASSISTED_CHAT -> "Sign in on the official page. A reply you bring back is marked as yours."
+        FREE_ACCESS_UNAVAILABLE -> "This account can be charged, so automated use stays off. Other AIs can continue."
+        TEMPORARILY_UNAVAILABLE -> when (providerId) {
+            ProviderId.LOCAL -> "No local model is installed. Other AIs can continue."
+            else -> "This provider cannot take part right now. Other AIs can continue."
+        }
+        SETUP_REQUIRED -> when (providerId) {
+            ProviderId.GROQ -> "The key is saved. Groq does not show whether the Free plan applies, so automated use stays off."
+            ProviderId.CLOUDFLARE -> "The token is saved. Workers Free is not verified, so automated use stays off."
+            ProviderId.OPENROUTER -> "The key is saved. Spending limits are not verified, so automated use stays off."
+            ProviderId.GEMINI -> "The key is saved. Project billing is not verified, so automated use stays off."
+            else -> "The key is saved. Free access is not verified, so automated use stays off."
+        }
+        else -> "Enter an API key or use the official sign-in, then tap Connect."
     }
 }
 

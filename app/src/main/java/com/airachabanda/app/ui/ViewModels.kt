@@ -495,9 +495,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
                 }
                 val present = mutableSetOf<ProviderId>()
                 if (stored(ProviderId.OPENROUTER, CredentialAccounts.DEFAULT)) present += ProviderId.OPENROUTER
-                if (stored(ProviderId.CLOUDFLARE, CLOUDFLARE_TOKEN) && stored(ProviderId.CLOUDFLARE, CLOUDFLARE_ACCOUNT)) {
-                    present += ProviderId.CLOUDFLARE
-                }
+                if (stored(ProviderId.CLOUDFLARE, CLOUDFLARE_TOKEN)) present += ProviderId.CLOUDFLARE
                 if (stored(ProviderId.GEMINI, CredentialAccounts.DEFAULT)) present += ProviderId.GEMINI
                 if (stored(ProviderId.GROQ, CredentialAccounts.DEFAULT)) present += ProviderId.GROQ
                 emit(present)
@@ -581,6 +579,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             credentials.put(ProviderId.CLOUDFLARE.name, CLOUDFLARE_TOKEN, token.toByteArray(Charsets.UTF_8))
             credentialRevision.value = credentialRevision.value + 1
             onResult("The Cloudflare account ID and token were stored on this device. No Cloudflare request was sent.")
+        }
+    }
+
+    fun saveCloudflareToken(token: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            if (token.isBlank()) {
+                onResult("Enter a Cloudflare API token. Nothing was stored.")
+                return@launch
+            }
+            credentials.put(ProviderId.CLOUDFLARE.name, CLOUDFLARE_TOKEN, token.toByteArray(Charsets.UTF_8))
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Cloudflare token was stored on this device. Account discovery and Workers Free are not verified. No Cloudflare request was sent.")
         }
     }
 
