@@ -266,6 +266,7 @@ enum class EvidenceKind {
     VERIFIED_SUPPORT,
     CONTRADICTORY,
     UNSUPPORTED_ASSERTION,
+    DOCUMENT_EXTRACT,
 }
 
 object EvidenceNotes {

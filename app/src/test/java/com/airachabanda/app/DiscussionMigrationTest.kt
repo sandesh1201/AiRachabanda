@@ -76,6 +76,7 @@ class DiscussionMigrationTest {
                 Migrations.MIGRATION_3_4,
                 Migrations.MIGRATION_4_5,
                 Migrations.MIGRATION_5_6,
+                Migrations.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()

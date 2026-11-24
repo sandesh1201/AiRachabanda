@@ -117,6 +117,8 @@ Milestone 007 records claim kind, local arithmetic checks, objection status chan
 
 Milestone 008 retrieves public sources only after consent. Wikimedia, arXiv, and the Federal Register are the approved connectors. A user may also submit one public HTTPS URL. A successful response is stored as retrieved and not assessed. It is not treated as proof of a claim. No AI inference request is added.
 
+Milestone 009 copies selected or shared files into app storage and extracts text locally. PDF, DOCX, XLSX, PPTX, TXT, CSV, JSON, Markdown, JPEG, PNG, and WEBP are the supported formats. Extracted text is untrusted document content. OCR is not installed. A file is not uploaded, and extracted text enters a prompt only after consent. No AI inference request is added. Document generation remains deferred.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

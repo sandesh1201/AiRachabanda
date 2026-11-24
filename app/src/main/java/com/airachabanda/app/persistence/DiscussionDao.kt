@@ -56,6 +56,9 @@ interface DiscussionDao {
     @Query("SELECT * FROM evidence_references WHERE claimId IN (:claimIds)")
     suspend fun evidenceFor(claimIds: List<String>): List<EvidenceReferenceEntity>
 
+    @Query("DELETE FROM evidence_references WHERE locator LIKE :prefix || '%'")
+    suspend fun deleteEvidenceByLocatorPrefix(prefix: String)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertObjection(entity: ObjectionEntity)
 

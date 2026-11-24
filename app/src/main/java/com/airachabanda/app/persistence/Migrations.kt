@@ -305,4 +305,35 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_dependencies_dependsOnTaskId` ON `task_dependencies` (`dependsOnTaskId`)")
         }
     }
+
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `originalFilename` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `fingerprint` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `processingStatus` TEXT NOT NULL DEFAULT 'PENDING'")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `detectedFormat` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `limitation` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `includeInPrompt` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `widthPixels` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `heightPixels` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `attachment_metadata` ADD COLUMN `orientation` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `attachment_chunks` (
+                `id` TEXT NOT NULL,
+                `attachmentId` TEXT NOT NULL,
+                `ordinal` INTEGER NOT NULL,
+                `reference` TEXT NOT NULL,
+                `kind` TEXT NOT NULL,
+                `method` TEXT NOT NULL,
+                `text` TEXT NOT NULL,
+                `processed` INTEGER NOT NULL,
+                `limitation` TEXT NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`attachmentId`) REFERENCES `attachment_metadata`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_attachment_chunks_attachmentId` ON `attachment_chunks` (`attachmentId`)")
+        }
+    }
 }

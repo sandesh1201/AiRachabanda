@@ -239,6 +239,48 @@ data class AttachmentMetadataEntity(
     val mimeType: String,
     val sizeBytes: Long,
     val addedAtEpochMs: Long,
+    @ColumnInfo(defaultValue = "''")
+    val originalFilename: String = "",
+    @ColumnInfo(defaultValue = "''")
+    val fingerprint: String = "",
+    @ColumnInfo(defaultValue = "'PENDING'")
+    val processingStatus: String = "PENDING",
+    @ColumnInfo(defaultValue = "''")
+    val detectedFormat: String = "",
+    @ColumnInfo(defaultValue = "''")
+    val limitation: String = "",
+    @ColumnInfo(defaultValue = "0")
+    val includeInPrompt: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
+    val widthPixels: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val heightPixels: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val orientation: Int = 0,
+)
+
+@Entity(
+    tableName = "attachment_chunks",
+    foreignKeys = [
+        ForeignKey(
+            entity = AttachmentMetadataEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["attachmentId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("attachmentId")],
+)
+data class AttachmentChunkEntity(
+    @PrimaryKey val id: String,
+    val attachmentId: String,
+    val ordinal: Int,
+    val reference: String,
+    val kind: String,
+    val method: String,
+    val text: String,
+    val processed: Boolean,
+    val limitation: String,
 )
 
 @Dao
@@ -350,6 +392,60 @@ interface CouncilDao {
 
     @Query("DELETE FROM conversations")
     suspend fun deleteConversations()
+
+    @Query("SELECT * FROM attachment_metadata WHERE conversationId = :conversationId ORDER BY addedAtEpochMs ASC")
+    fun observeAttachments(conversationId: String): Flow<List<AttachmentMetadataEntity>>
+
+    @Query("SELECT * FROM attachment_metadata WHERE conversationId = :conversationId ORDER BY addedAtEpochMs ASC")
+    suspend fun attachments(conversationId: String): List<AttachmentMetadataEntity>
+
+    @Query("SELECT * FROM attachment_metadata WHERE id = :id")
+    suspend fun attachment(id: String): AttachmentMetadataEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAttachment(entity: AttachmentMetadataEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertChunks(entities: List<AttachmentChunkEntity>)
+
+    @Query("SELECT * FROM attachment_chunks WHERE attachmentId = :attachmentId ORDER BY ordinal ASC")
+    suspend fun chunks(attachmentId: String): List<AttachmentChunkEntity>
+
+    @Query("DELETE FROM attachment_chunks WHERE attachmentId = :attachmentId")
+    suspend fun deleteChunks(attachmentId: String)
+
+    @Query("DELETE FROM attachment_metadata WHERE id = :id")
+    suspend fun deleteAttachment(id: String)
+
+    @Query("UPDATE attachment_metadata SET displayName = :label WHERE id = :id")
+    suspend fun renameAttachment(id: String, label: String)
+
+    @Query("UPDATE attachment_metadata SET includeInPrompt = :consent WHERE conversationId = :conversationId")
+    suspend fun setAttachmentConsent(conversationId: String, consent: Boolean)
+
+    @Query(
+        """
+        UPDATE attachment_metadata
+        SET mimeType = :mimeType,
+            processingStatus = :status,
+            detectedFormat = :format,
+            limitation = :limitation,
+            widthPixels = :width,
+            heightPixels = :height,
+            orientation = :orientation
+        WHERE id = :id
+        """,
+    )
+    suspend fun updateAttachmentResult(
+        id: String,
+        mimeType: String,
+        status: String,
+        format: String,
+        limitation: String,
+        width: Int,
+        height: Int,
+        orientation: Int,
+    )
 }
 
 @Database(
@@ -362,6 +458,7 @@ interface CouncilDao {
         ImportedResponseEntity::class,
         WorkflowEventEntity::class,
         AttachmentMetadataEntity::class,
+        AttachmentChunkEntity::class,
         ParticipantEntity::class,
         ParticipantRoleEntity::class,
         ModelIdentityEntity::class,
@@ -378,7 +475,7 @@ interface CouncilDao {
         ProviderCompletionEntity::class,
         TaskDependencyEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

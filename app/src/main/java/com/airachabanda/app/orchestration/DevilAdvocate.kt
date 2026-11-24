@@ -69,6 +69,7 @@ object CritiquePrompt {
         roundNumber: Int,
         messages: List<ChatMessage>,
         disclosure: String,
+        attachmentReferences: String = "",
     ): String {
         val material = messages.filter { it.source != MessageSource.USER && it.body.isNotBlank() }
         return buildString {
@@ -93,6 +94,10 @@ object CritiquePrompt {
                 appendLine("Material from $author, round ${message.roundNumber ?: 1}:")
                 appendLine(message.body.trim())
                 appendLine()
+            }
+            if (attachmentReferences.isNotBlank()) {
+                appendLine("Attachment references. Challenge conclusions against these locators.")
+                appendLine(attachmentReferences)
             }
         }.trim()
     }

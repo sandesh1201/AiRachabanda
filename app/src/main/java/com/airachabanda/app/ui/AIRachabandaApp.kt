@@ -1,5 +1,9 @@
 package com.airachabanda.app.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
@@ -53,6 +57,8 @@ fun AIRachabandaApp(
     expanded: Boolean,
     useRail: Boolean,
     sharedText: String?,
+    sharedUris: List<Uri> = emptyList(),
+    onSharedUrisConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
@@ -64,6 +70,18 @@ fun AIRachabandaApp(
         currentRoute == destination.route || currentRoute?.startsWith("${destination.route}/") == true
     }?.route
     val showPrimaryNav = topLevelRoute != null || currentRoute == null
+    fun notice(message: String) {
+        scope.launch { snackbar.showSnackbar(message) }
+    }
+    LaunchedEffect(sharedUris) {
+        if (sharedUris.isEmpty()) return@LaunchedEffect
+        val id = application.container.repository.createConversation("Shared files", ResearchMode.STANDARD)
+        sharedUris.forEach { uri ->
+            notice(application.container.attachments.importUri(id, uri, uri.lastPathSegment.orEmpty()))
+        }
+        onSharedUrisConsumed()
+        navController.navigate("council/$id") { launchSingleTop = true }
+    }
     LaunchedEffect(sharedText) {
         if (sharedText.isNullOrBlank()) return@LaunchedEffect
         val route = navController.currentDestination?.route
@@ -71,10 +89,6 @@ fun AIRachabandaApp(
         navController.navigate("import?provider=${ProviderId.CLAUDE.name}&task=&conversation=") {
             launchSingleTop = true
         }
-    }
-
-    fun notice(message: String) {
-        scope.launch { snackbar.showSnackbar(message) }
     }
 
     Scaffold(
@@ -277,6 +291,17 @@ private fun CouncilRoute(
     val tasks by model.tasks.collectAsState()
     val stage by model.stage.collectAsState()
     val enabled by model.enabledParticipants.collectAsState()
+    val attachments by model.attachments.collectAsState()
+    val inspected by model.inspectedAttachment.collectAsState()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val id = conversationId ?: return@rememberLauncherForActivityResult
+        uris.forEach { uri ->
+            runCatching {
+                application.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            model.importAttachment(id, uri, notice)
+        }
+    }
     CouncilScreen(
         conversation = conversation,
         messages = messages,
@@ -335,6 +360,14 @@ private fun CouncilRoute(
             val id = conversationId ?: return@CouncilScreen
             model.retrievePublicUrl(id, url, consent, notice)
         },
+        attachments = attachments,
+        inspectedAttachment = inspected,
+        onAttach = { picker.launch(arrayOf("*/*")) },
+        onRenameAttachment = model::renameAttachment,
+        onRemoveAttachment = model::removeAttachment,
+        onCancelAttachment = model::cancelAttachment,
+        onInspectAttachment = model::inspectAttachment,
+        onAttachmentConsent = { consent -> conversationId?.let { model.setAttachmentConsent(it, consent) } },
         enabledProviders = enabled,
         contentPadding = padding,
     )

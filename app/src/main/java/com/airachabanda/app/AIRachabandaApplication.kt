@@ -2,6 +2,7 @@ package com.airachabanda.app
 
 import android.app.Application
 import androidx.room.Room
+import com.airachabanda.app.documents.AttachmentService
 import com.airachabanda.app.orchestration.DatabaseParticipantSource
 import com.airachabanda.app.orchestration.OrchestrationEngine
 import com.airachabanda.app.persistence.AppDatabase
@@ -44,6 +45,7 @@ class AppContainer(context: Application) {
         Migrations.MIGRATION_3_4,
         Migrations.MIGRATION_4_5,
         Migrations.MIGRATION_5_6,
+        Migrations.MIGRATION_6_7,
     )
         .build()
 
@@ -65,6 +67,11 @@ class AppContainer(context: Application) {
         transport = UrlConnectionTransport(),
         authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
     )
+    val attachments = AttachmentService(
+        context = context,
+        council = database.councilDao(),
+        discussion = database.discussionDao(),
+    )
     val orchestration: OrchestrationEngine = OrchestrationEngine(
         council = database.councilDao(),
         discussion = database.discussionDao(),
@@ -84,6 +91,7 @@ class AppContainer(context: Application) {
             clock = { System.currentTimeMillis() },
             ids = { java.util.UUID.randomUUID().toString() },
         ),
+        attachmentContext = { conversationId, sessionId -> attachments.prepare(conversationId, sessionId) },
     )
     val councilDao = database.councilDao()
     val discussionDao = database.discussionDao()

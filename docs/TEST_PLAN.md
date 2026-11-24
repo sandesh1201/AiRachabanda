@@ -172,6 +172,17 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - A missing or ambiguous claim identifier does not start a retrieval.
 - A stored source survives a process restart.
 
+## Milestone 009 checks
+
+- A text PDF keeps a page reference. A scanned PDF is labeled scanned and does not invent OCR text.
+- A DOCX keeps heading, paragraph, and table order. An XLSX records the formula and the stored result separately and does not execute the formula. A PPTX keeps slide text and speaker notes.
+- CSV and JSON keep their structure. A PNG preview records dimensions. JPEG orientation is read.
+- A corrupted file, a mismatched extension, an encrypted PDF, an encrypted office file, an oversized file, a ZIP path escape, a ZIP expansion past the limit, and a document type declaration are rejected or left unparsed.
+- A macro is not executed. Document text that says to ignore instructions is stored as untrusted content.
+- Two attachments can belong to one conversation. Cancelling extraction does not mark the file fully analyzed.
+- Extracted evidence keeps the attachment identifier and reference. Consent is required before that text is placed in a prompt. Removing an attachment deletes its file and chunks. The rows survive a process restart.
+- A council research prompt can include a labeled local attachment excerpt. That excerpt is not a live model response.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

@@ -22,6 +22,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 006B: Discussion planning, task dependencies, and parallel assisted work are recorded on the device. No live provider request is added.
 - Milestone 007: Claim records, local arithmetic, objection history, and evidence notes are stored on the device. Live provider requests and live web retrieval remain off.
 - Milestone 008: Public research can use Wikimedia, arXiv, and the Federal Register after consent. A retrieved page is not treated as proof. No AI inference request is added.
+- Milestone 009: Local attachment import, extraction, and source-linked document evidence. OCR is not installed. No file is uploaded and no AI inference request is added.
 
 ## Next
 
@@ -29,9 +30,18 @@ Gemini account setup can be finished later. Council work continues with imported
 
 ## Later
 
+Remaining Milestone 008 research improvements, recorded here and not rewritten in Milestone 009:
+
+- Mode-dependent research budgets.
+- Better source discovery and ranking.
+- Larger document retrieval where safe.
+- Verified DNS connection enforcement.
+- Separation of live network tests from deterministic unit tests.
+- Broader research coverage.
+
 - Automated Devil's Advocate rounds for a provider whose billing state is `VERIFIED_FREE` or `INCLUDED_SUBSCRIPTION_VERIFIED`, inside the remaining request budget.
 - Rebuttal routing back to the original participant.
 - Final answers that retain unresolved objections.
 - The held-out accuracy benchmark.
 - Folded and unfolded Galaxy Z Fold 6 verification on hardware or a foldable emulator.
-- Document generation, attachments, and notifications.
+- Document generation and notifications. Attachments are stored locally.

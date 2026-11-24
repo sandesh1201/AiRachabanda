@@ -13,8 +13,8 @@ android {
         applicationId = "com.airachabanda.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.8.0"
+        versionCode = 17
+        versionName = "0.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }
@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.browser)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.play.services.auth)
 
     debugImplementation(libs.androidx.compose.ui.tooling)

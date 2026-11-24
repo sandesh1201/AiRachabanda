@@ -2,9 +2,11 @@
 
 package com.airachabanda.app.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.airachabanda.app.documents.ConversationAttachment
 import com.airachabanda.app.AppContainer
 import com.airachabanda.app.core.model.AccountChoice
 import com.airachabanda.app.core.model.AppearanceMode
@@ -27,13 +29,16 @@ import com.airachabanda.app.core.model.WorkflowEvent
 import com.airachabanda.app.orchestration.CouncilStage
 import com.airachabanda.app.orchestration.CouncilWorkflow
 import com.airachabanda.app.orchestration.ImportRules
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HomeViewModel(container: AppContainer) : ViewModel() {
     private val repository = container.repository
@@ -91,6 +96,11 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val enabledParticipants: StateFlow<Set<ProviderId>> = container.preferences.enabledParticipants
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.airachabanda.app.provider.ProviderAccess.defaultEnabled)
+    val attachments: StateFlow<List<ConversationAttachment>> = selectedConversationId
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else container.councilDao.observeAttachments(id) }
+        .map { rows -> rows.map { container.attachments.toItem(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val inspectedAttachment: MutableStateFlow<String> = MutableStateFlow("")
     val stage: StateFlow<CouncilStage?> = kotlinx.coroutines.flow.combine(selectedConversationId, revision) { id, _ -> id }
         .flatMapLatest { id ->
             if (id == null) flowOf<CouncilStage?>(null) else kotlinx.coroutines.flow.flow { emit(workflow.inspect(id)) }
@@ -121,6 +131,35 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
 
     fun addMessage(conversationId: String, body: String) {
         viewModelScope.launch { repository.addUserMessage(conversationId, body) }
+    }
+
+    fun importAttachment(conversationId: String, uri: Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = container.attachments.importUri(conversationId, uri, uri.lastPathSegment.orEmpty())
+            withContext(Dispatchers.Main) { onResult(message) }
+        }
+    }
+
+    fun renameAttachment(id: String, label: String) {
+        viewModelScope.launch(Dispatchers.IO) { container.attachments.rename(id, label) }
+    }
+
+    fun removeAttachment(id: String) {
+        viewModelScope.launch(Dispatchers.IO) { container.attachments.remove(id) }
+    }
+
+    fun cancelAttachment(id: String) {
+        container.attachments.cancel(id)
+    }
+
+    fun setAttachmentConsent(conversationId: String, consent: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) { container.attachments.setPromptConsent(conversationId, consent) }
+    }
+
+    fun inspectAttachment(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            inspectedAttachment.value = container.attachments.inspect(id)
+        }
     }
 
     fun addContext(conversationId: String, text: String, invalidateOpenWork: Boolean, onResult: (String) -> Unit) {

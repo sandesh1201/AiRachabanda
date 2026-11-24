@@ -104,6 +104,7 @@ class OrchestrationEngine(
     private val prepared: PreparedProviderDispatch? = null,
     private val researchTransport: ResearchTransport = PublicHttp(),
     private val nameResolver: (String) -> List<java.net.InetAddress> = { host -> java.net.InetAddress.getAllByName(host).toList() },
+    private val attachmentContext: suspend (conversationId: String, sessionId: String) -> String = { _, _ -> "" },
 ) {
     private val mutex = Mutex()
 
@@ -178,6 +179,8 @@ class OrchestrationEngine(
         val userContext = council.messages(start.conversationId)
             .filter { it.source == MessageSource.USER.name }
             .map { it.body }
+        val attachmentNote = attachmentContext(start.conversationId, sessionId)
+        val context = if (attachmentNote.isBlank()) userContext else userContext + attachmentNote
         if (plan.decompose && TaskGraph.hasCycle(plan.tasks.flatMap { work -> work.dependsOn.map { dependency -> work.localId to dependency } })) {
             discussion.updatePlan(
                 id = sessionId,
@@ -189,12 +192,12 @@ class OrchestrationEngine(
                 verificationRequired = plan.verificationRequired,
                 updatedAt = clock(),
             )
-            createIndependentResearch(sessionId, grants, question, userContext)
+            createIndependentResearch(sessionId, grants, question, context)
         } else if (plan.decompose) {
-            createPlannedWork(sessionId, grants, plan.tasks, userContext, question)
+            createPlannedWork(sessionId, grants, plan.tasks, context, question)
             applySchedule(sessionId)
         } else {
-            createIndependentResearch(sessionId, grants, question, userContext)
+            createIndependentResearch(sessionId, grants, question, context)
         }
         enterCollection(sessionId)
         pump(sessionId)
@@ -1005,6 +1008,7 @@ class OrchestrationEngine(
                 roundNumber = session.reviewRound,
                 messages = messages,
                 disclosure = "This critique is assisted. No underlying model identity is on record, so it is not independent verification.",
+                attachmentReferences = attachmentContext(session.conversationId, session.id),
             )
         } else {
             "Critique the recorded claims in this session. Do not invent evidence, citations, or a confidence percentage."

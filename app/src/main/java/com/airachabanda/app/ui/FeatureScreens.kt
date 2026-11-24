@@ -1,18 +1,24 @@
 package com.airachabanda.app.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -27,7 +33,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import com.airachabanda.app.documents.ConversationAttachment
+import com.airachabanda.app.documents.DocumentLimits
 import com.airachabanda.app.core.model.AccountChoice
 import com.airachabanda.app.orchestration.CouncilStage
 import com.airachabanda.app.core.model.AppearanceMode
@@ -150,6 +159,14 @@ fun CouncilScreen(
     onImport: (ProviderId, String?) -> Unit,
     onSearch: (String, String, Boolean) -> Unit,
     onRetrieveUrl: (String, Boolean) -> Unit,
+    attachments: List<ConversationAttachment>,
+    inspectedAttachment: String,
+    onAttach: () -> Unit,
+    onRenameAttachment: (String, String) -> Unit,
+    onRemoveAttachment: (String) -> Unit,
+    onCancelAttachment: (String) -> Unit,
+    onInspectAttachment: (String) -> Unit,
+    onAttachmentConsent: (Boolean) -> Unit,
     enabledProviders: Set<ProviderId>,
     contentPadding: PaddingValues,
 ) {
@@ -163,6 +180,8 @@ fun CouncilScreen(
     var publicUrl by rememberSaveable { mutableStateOf("") }
     var researchConsent by rememberSaveable { mutableStateOf(false) }
     var connector by rememberSaveable { mutableStateOf("WIKIMEDIA") }
+    var renaming by rememberSaveable { mutableStateOf("") }
+    var renameLabel by rememberSaveable { mutableStateOf("") }
     var selectedRaw by rememberSaveable(enabledProviders.sortedBy { it.name }.joinToString(",")) {
         mutableStateOf(enabledProviders.joinToString(","))
     }
@@ -215,12 +234,63 @@ fun CouncilScreen(
                         },
                         enabled = draft.isNotBlank(),
                     ) { Text("Add message") }
-                    OutlinedButton(onClick = {}, enabled = false) { Text("Attach") }
+                    OutlinedButton(onClick = onAttach) { Text("Attach") }
                 }
                 Text(
-                    "Add message stores your text locally. It does not contact a provider. Attachments are not available in this version.",
+                    "Add message stores your text locally. It does not contact a provider. ${DocumentLimits.EXPLANATION}",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                if (attachments.isEmpty()) {
+                    Text("No file is attached. Choosing a file copies it into app storage. It is not uploaded.")
+                } else {
+                    val consent = attachments.any { it.includedInPrompt }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = consent, onCheckedChange = onAttachmentConsent)
+                        Text("Include extracted text in prompts I copy. Files stay on this device and are not uploaded.")
+                    }
+                    attachments.forEach { item ->
+                        Text("${item.format} · ${item.label} · ${item.status} · ${item.sizeBytes} bytes")
+                        if (item.limitation.isNotBlank()) Text(item.limitation, style = MaterialTheme.typography.bodySmall)
+                        item.previewPath?.let { path ->
+                            val bitmap = BitmapFactory.decodeFile(path)
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = item.label,
+                                    modifier = Modifier.width(160.dp).height(120.dp),
+                                )
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                renaming = item.id
+                                renameLabel = item.label
+                            }) { Text("Rename") }
+                            TextButton(onClick = { onInspectAttachment(item.id) }) { Text("Inspect") }
+                            TextButton(onClick = { onRemoveAttachment(item.id) }) { Text("Remove") }
+                            if (item.status == "PROCESSING") {
+                                TextButton(onClick = { onCancelAttachment(item.id) }) { Text("Cancel") }
+                            }
+                        }
+                    }
+                    if (inspectedAttachment.isNotBlank()) Text(inspectedAttachment)
+                }
+                if (renaming.isNotBlank()) {
+                    AlertDialog(
+                        onDismissRequest = { renaming = "" },
+                        title = { Text("Display label") },
+                        text = {
+                            OutlinedTextField(value = renameLabel, onValueChange = { renameLabel = it }, label = { Text("Label") })
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                onRenameAttachment(renaming, renameLabel)
+                                renaming = ""
+                            }) { Text("Save") }
+                        },
+                        dismissButton = { TextButton(onClick = { renaming = "" }) { Text("Cancel") } },
+                    )
+                }
             }
         }
         val answer = @Composable {
