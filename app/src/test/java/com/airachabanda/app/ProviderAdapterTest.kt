@@ -93,7 +93,7 @@ class ProviderAdapterTest {
         assertEquals(PlanState.PAID, paidPlan.snapshot.plan)
         val paidModel = CloudflareBillingPolicy.assess(true, false, "@cf/moonshotai/kimi-k2.6", true, false, 1, false)
         assertTrue(paidModel.reason.contains("paid"))
-        val exhausted = CloudflareBillingPolicy.assess(true, false, "@cf/example/text", true, true, 1, false)
+        val exhausted = CloudflareBillingPolicy.assess(true, false, "@cf/example/text", true, true, 1, false, positiveFreePlan = true)
         assertTrue(exhausted.reason.contains("exhausted"))
         val geminiKeyOnly = GeminiBillingPolicy.assess(null, true, false, false, false, 1)
         assertFalse(geminiKeyOnly.accepted)
@@ -109,12 +109,15 @@ class ProviderAdapterTest {
         val gemini = GeminiAdapter(transport, GeminiAuthorization.PRODUCTION)
         assertEquals(OpenRouterFailure.POLICY, cloudflare.verifyMetadata("a".repeat(32), "synthetic-token").failure)
         assertEquals(OpenRouterFailure.POLICY, gemini.verifyMetadata("synthetic-key").failure)
-        val prepared = cloudflare.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true)
+        val excluded = cloudflare.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true)
+        assertTrue(excluded.reason.contains("does not establish"))
+        assertEquals(null, excluded.request)
+        val prepared = cloudflare.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true)
         assertEquals(OpenRouterFailure.POLICY, prepared.failure)
         assertTrue(prepared.request?.body?.contains("\"stream\":true") == true)
         assertFalse(prepared.request?.body?.contains("gateway") == true)
         assertEquals(0, transport.calls)
-        val geminiRequest = gemini.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true)
+        val geminiRequest = gemini.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true, credentialBoundToProject = true)
         assertFalse(geminiRequest.request?.body?.contains("tools") == true)
         assertFalse(geminiRequest.request?.url?.contains("key=") == true)
         assertEquals(0, transport.calls)
@@ -139,29 +142,29 @@ class ProviderAdapterTest {
 data: [DONE]
 """,
         )
-        val completed = stream.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true)
+        val completed = stream.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true)
         assertEquals(ResponseDisposition.COMPLETED, completed.disposition)
         assertEquals("391", completed.text)
 
         val cut = authorizedCloudflare("data: {\"response\":\"partial\"}\n")
-        assertEquals(ResponseDisposition.INTERRUPTED, cut.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true).disposition)
+        assertEquals(ResponseDisposition.INTERRUPTED, cut.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true).disposition)
 
         val cancelled = CloudflareAdapter(throwingTransport(CancellationException("cancelled")), CloudflareAuthorization(inferenceAuthorized = true))
         var thrown = false
         try {
-            cancelled.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true)
+            cancelled.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true)
         } catch (expected: CancellationException) {
             thrown = true
         }
         assertTrue(thrown)
 
         val timed = CloudflareAdapter(throwingTransport(SocketTimeoutException("timed out")), CloudflareAuthorization(inferenceAuthorized = true))
-        assertEquals(ResponseDisposition.OUTCOME_UNKNOWN, timed.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true).disposition)
+        assertEquals(ResponseDisposition.OUTCOME_UNKNOWN, timed.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true).disposition)
 
         val denied = authorizedCloudflare("{}", 401)
-        assertEquals(OpenRouterFailure.AUTHENTICATION, denied.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true).failure)
+        assertEquals(OpenRouterFailure.AUTHENTICATION, denied.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true).failure)
         val limited = authorizedCloudflare("{}", 429)
-        assertEquals(OpenRouterFailure.RATE_LIMIT, limited.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true).failure)
+        assertEquals(OpenRouterFailure.RATE_LIMIT, limited.complete("a".repeat(32), "synthetic-token", "@cf/example/text", "Question", 1, subscriptionsRead = true, positiveFreePlan = true).failure)
 
         val gemini = GeminiAdapter(
             fixedTransport(
@@ -169,12 +172,12 @@ data: [DONE]
             ),
             GeminiAuthorization(inferenceAuthorized = true),
         )
-        val truncated = gemini.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true)
+        val truncated = gemini.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true, credentialBoundToProject = true)
         assertEquals(ResponseDisposition.TRUNCATED, truncated.disposition)
         assertFalse(truncated.completed)
 
         val unknown = GeminiAdapter(fixedTransport(""), GeminiAuthorization(inferenceAuthorized = true))
-        assertEquals(ResponseDisposition.OUTCOME_UNKNOWN, unknown.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true).disposition)
+        assertEquals(ResponseDisposition.OUTCOME_UNKNOWN, unknown.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true, credentialBoundToProject = true).disposition)
 
         seed(budget = 1, consumed = 0)
         val dispatch = PreparedProviderDispatch(
@@ -185,7 +188,7 @@ data: [DONE]
             clock = { 10L },
             ids = { "message-1" },
         )
-        val call = PreparedCall(ProviderId.CLOUDFLARE, "@cf/example/text", "synthetic-token", accountId = "a".repeat(32), subscriptionsRead = true)
+        val call = PreparedCall(ProviderId.CLOUDFLARE, "@cf/example/text", "synthetic-token", accountId = "a".repeat(32), subscriptionsRead = true, positiveFreePlan = true)
         val first = dispatch.dispatch("session", "conversation", "task", 1, "Question", 1, call)
         val second = dispatch.dispatch("session", "conversation", "task", 1, "Question", 1, call)
         assertTrue(first.completed)

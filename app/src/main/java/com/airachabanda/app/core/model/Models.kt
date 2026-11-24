@@ -146,6 +146,8 @@ data class ResearchTask(
     val prompt: String,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    val role: String = "RESEARCHER",
+    val kind: String = "RESEARCH",
 )
 
 data class ImportedResponse(

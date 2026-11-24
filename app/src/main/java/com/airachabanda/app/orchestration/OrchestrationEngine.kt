@@ -33,6 +33,7 @@ import com.airachabanda.app.persistence.ResearchTaskEntity
 import com.airachabanda.app.persistence.VerificationResultEntity
 import com.airachabanda.app.persistence.WorkflowCheckpointEntity
 import com.airachabanda.app.persistence.WorkflowEventEntity
+import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderRegistry
 import com.airachabanda.app.provider.dispatch.PreparedCall
 import com.airachabanda.app.provider.dispatch.PreparedProviderDispatch
@@ -60,7 +61,7 @@ class DatabaseParticipantSource(
                 ?: definition.defaultParticipation
             val billing = row?.billingEligibility?.let(BillingEligibility::valueOf)
                 ?: definition.defaultBilling
-            when (participation) {
+            when (ProviderAccess.active(definition.id)) {
                 ParticipationMode.ASSISTED -> EligibleParticipant(definition.id, assisted = true, billing = billing)
                 ParticipationMode.AUTOMATED -> EligibleParticipant(definition.id, assisted = false, billing = billing)
                 ParticipationMode.UNAVAILABLE -> null
@@ -979,7 +980,16 @@ class OrchestrationEngine(
                 providerId = participant.providerId,
                 roundNumber = round,
                 state = state.name,
-                prompt = prompt,
+                prompt = if (participant.participationMode == ParticipationMode.ASSISTED.name) {
+                    AssistedPrompt.frame(
+                        providerName = ProviderRegistry.definition(ProviderId.valueOf(participant.providerId)).displayName,
+                        role = role.name.replace('_', ' ').lowercase(),
+                        task = englishTask(kind),
+                        body = prompt,
+                    )
+                } else {
+                    prompt
+                },
                 createdAtEpochMs = now,
                 updatedAtEpochMs = now,
                 role = role.name,

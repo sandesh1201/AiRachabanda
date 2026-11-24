@@ -1,14 +1,14 @@
 package com.airachabanda.app.orchestration
 
 import com.airachabanda.app.core.model.ProviderId
-import com.airachabanda.app.provider.ProviderRegistry
+import com.airachabanda.app.provider.ProviderAccess
 
 object ImportRules {
     data class Result(val accepted: Boolean, val reason: String)
 
     fun check(providerId: ProviderId, body: String, roundNumber: Int): Result {
-        if (providerId !in ProviderRegistry.assistedImportProviders) {
-            return Result(false, "This provider has no assisted import path in this version.")
+        if (ProviderAccess.active(providerId) != com.airachabanda.app.core.model.ParticipationMode.ASSISTED) {
+            return Result(false, "This provider has no free assisted chat path.")
         }
         if (body.isBlank()) {
             return Result(false, "Paste a response before importing it.")
@@ -29,5 +29,15 @@ object AssistedPrompt {
         appendLine("Please answer the question below. State uncertainty and distinguish evidence from inference.")
         appendLine()
         append(question.trim())
+    }
+
+    fun frame(providerName: String, role: String, task: String, body: String): String = buildString {
+        appendLine("AI Rachabanda assisted prompt")
+        appendLine("Provider: $providerName")
+        appendLine("Role: $role")
+        appendLine("Task: $task")
+        appendLine("This is assisted participation. The provider is not connected automatically.")
+        appendLine()
+        append(body.trim())
     }
 }

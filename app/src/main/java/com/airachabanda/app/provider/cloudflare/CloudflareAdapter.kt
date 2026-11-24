@@ -66,6 +66,7 @@ class CloudflareAdapter(
         subscriptionsRead: Boolean = false,
         paidWorkersPlanListed: Boolean = false,
         textGeneration: Boolean = true,
+        positiveFreePlan: Boolean = false,
     ): CloudflareOutcome {
         val decision = CloudflareBillingPolicy.assess(
             subscriptionsRead = subscriptionsRead,
@@ -75,6 +76,7 @@ class CloudflareAdapter(
             quotaExhausted = quotaExhausted,
             sessionBudgetRemaining = sessionBudgetRemaining,
             gatewayRequested = false,
+            positiveFreePlan = positiveFreePlan,
         )
         if (!decision.accepted) {
             return CloudflareOutcome(OpenRouterFailure.POLICY, ResponseDisposition.FAILED, decision.reason)

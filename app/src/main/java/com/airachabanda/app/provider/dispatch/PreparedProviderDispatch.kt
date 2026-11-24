@@ -24,10 +24,12 @@ data class PreparedCall(
     val subscriptionsRead: Boolean = false,
     val paidWorkersPlanListed: Boolean = false,
     val textGeneration: Boolean = true,
+    val positiveFreePlan: Boolean = false,
     val billingLinked: Boolean? = null,
     val freeTierKnown: Boolean = false,
     val paidModel: Boolean = false,
     val quotaExhausted: Boolean = false,
+    val credentialBoundToProject: Boolean = false,
 )
 
 class PreparedProviderDispatch(
@@ -58,6 +60,7 @@ class PreparedProviderDispatch(
                 subscriptionsRead = call.subscriptionsRead,
                 paidWorkersPlanListed = call.paidWorkersPlanListed,
                 textGeneration = call.textGeneration,
+                positiveFreePlan = call.positiveFreePlan,
             ).toStored()
             ProviderId.GEMINI -> gemini.complete(
                 apiKey = call.secret,
@@ -68,6 +71,7 @@ class PreparedProviderDispatch(
                 freeTierKnown = call.freeTierKnown,
                 paidModel = call.paidModel,
                 quotaExhausted = call.quotaExhausted,
+                credentialBoundToProject = call.credentialBoundToProject,
             ).toStored()
             else -> return DispatchOutcome(OpenRouterFailure.POLICY, "This dispatcher only accepts Cloudflare and Gemini.", completed = false)
         }

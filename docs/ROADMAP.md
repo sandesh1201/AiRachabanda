@@ -14,10 +14,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 
 - Milestone 005B: OpenRouter metadata was not sent because no credential was stored. Billing safeguards were re-read. Cloudflare Workers AI and the Gemini API Free tier are the next provider candidates. Inference stays off.
 - Milestone 005C: Cloudflare and Gemini adapters, configuration screens, and provider-specific billing policies. Live metadata and live inference stay off.
+- Milestone 005D: Free chat is assisted for providers that publish an official chat. Free APIs stay off until billing protection is positively established.
 
 ## Next
 
-The owner can enter a Cloudflare token or a Gemini API key in the app. Neither screen sends a metadata or inference request in this build. OpenRouter still needs a replacement key and an in-app metadata confirmation before any later check. No chat completion is authorized. GitHub Models is retired.
+The owner can enable additional free-chat participants in Settings. Cloudflare still needs a positive Workers Free verification before any API call. Gemini API billing still cannot be read from the API key. No live inference is authorized.
 
 ## Later
 

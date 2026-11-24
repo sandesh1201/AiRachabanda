@@ -15,6 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +34,8 @@ import com.airachabanda.app.core.model.ImportDraft
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
+import com.airachabanda.app.provider.AccessLabel
+import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderRegistry
 import com.airachabanda.app.provider.claude.ClaudeAssistedLinks
 import com.airachabanda.app.provider.openrouter.ConnectionState
@@ -92,6 +95,8 @@ fun SettingsDetail(
     onRemoveCloudflare: () -> Unit,
     onSaveGemini: (String) -> Unit,
     onRemoveGemini: () -> Unit,
+    enabledProviders: Set<ProviderId>,
+    onToggleParticipant: (ProviderId, Boolean) -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(
@@ -99,11 +104,10 @@ fun SettingsDetail(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         when (section) {
-            "accounts", "plans", "providers" -> {
+            "accounts", "plans" -> {
                 Text(
                     when (section) {
                         "plans" -> "Subscription Plans"
-                        "providers" -> "AI Providers"
                         else -> "Manage Accounts"
                     },
                     style = MaterialTheme.typography.headlineSmall,
@@ -116,6 +120,7 @@ fun SettingsDetail(
                     }
                 }
             }
+            "providers" -> ProviderAccessSettings(enabledProviders, onToggleParticipant)
             "usage" -> {
                 Text("Usage & Limits", style = MaterialTheme.typography.headlineSmall)
                 Text("Quotas that have not been observed stay unknown. This screen does not invent remaining credits or reset times.")
@@ -161,7 +166,7 @@ fun SettingsDetail(
                 credentialLabel = "API token",
                 accountLabel = "Account ID",
                 status = cloudflareStatus(cloudflareReady),
-                consent = "A confirmed check would send GET https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search and GET https://api.cloudflare.com/client/v4/accounts/{account_id}/subscriptions. The token needs Workers AI Read and Workers AI Edit. The plan read also needs Billing Read. This build does not send either request.",
+                consent = "A confirmed check would send GET https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search and GET https://api.cloudflare.com/client/v4/accounts/{account_id}/subscriptions. Model search needs Workers AI Read. The subscriptions read needs Billing Read. That response can show WORKERS_PAID. It does not positively name Workers Free. This build does not send either request.",
                 onSave = { account, secret -> onSaveCloudflare(account, secret) },
                 onRemove = onRemoveCloudflare,
             )
@@ -171,7 +176,7 @@ fun SettingsDetail(
                 credentialLabel = "API key",
                 accountLabel = null,
                 status = geminiStatus(geminiReady),
-                consent = "A confirmed check would send GET https://generativelanguage.googleapis.com/v1beta/models with the key in the x-goog-api-key header. That call does not show whether billing is linked. Proving billing is unlinked needs GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo and permission billing.resourceAssociations.get. This build does not send either request. Free-tier prompts and responses may be used to improve Google products.",
+                consent = "A confirmed check would send GET https://generativelanguage.googleapis.com/v1beta/models with the key in the x-goog-api-key header. That call does not show billing. Proving billing is unlinked needs GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo and permission billing.resourceAssociations.get. The Gemini API key does not prove which project it belongs to. This build does not send either request. Free-tier prompts and responses may be used to improve Google products.",
                 onSave = { _, secret -> onSaveGemini(secret) },
                 onRemove = onRemoveGemini,
             )
@@ -179,7 +184,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.5.1. Cloudflare and Gemini adapters are installed. Live metadata and inference stay off. OpenRouter chat completions stay off.")
+                Text("Version 0.5.2. Free chat is assisted. Cloudflare and Gemini APIs stay off until a free plan is positively verified.")
             }
         }
     }
@@ -313,12 +318,15 @@ fun ImportScreen(
     initialProvider: ProviderId,
     initialConversationId: String?,
     taskId: String?,
+    recovered: com.airachabanda.app.persistence.AssistedReturn?,
     onImport: (ImportDraft, (Boolean, String) -> Unit) -> Unit,
     contentPadding: PaddingValues,
 ) {
-    var provider by rememberSaveable { mutableStateOf(initialProvider) }
     var conversationId by rememberSaveable {
-        mutableStateOf(initialConversationId?.takeIf { it.isNotBlank() } ?: conversations.firstOrNull()?.id.orEmpty())
+        mutableStateOf(initialConversationId?.takeIf { it.isNotBlank() } ?: recovered?.conversationId ?: conversations.firstOrNull()?.id.orEmpty())
+    }
+    var provider by rememberSaveable {
+        mutableStateOf(if (initialConversationId.isNullOrBlank() && recovered != null) recovered.providerId else initialProvider)
     }
     var body by rememberSaveable { mutableStateOf(initialBody) }
     var round by rememberSaveable { mutableStateOf("1") }
@@ -343,6 +351,8 @@ fun ImportScreen(
                 Text(conversation.title)
             }
         }
+        Text("This import is user-supplied. It does not mean the provider responded inside this app.")
+        if (taskId != null) Text("Associated task: $taskId")
         Text("Provider")
         ProviderRegistry.assistedImportProviders.forEach { id ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -471,6 +481,38 @@ private fun DirectProviderSettings(
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Close") } },
         )
+    }
+}
+
+@Composable
+private fun ProviderAccessSettings(
+    enabled: Set<ProviderId>,
+    onToggle: (ProviderId, Boolean) -> Unit,
+) {
+    Text("AI Providers", style = MaterialTheme.typography.headlineSmall)
+    Text("Free chat is assisted. A free API is used only after its billing protection is established. Paid inference is not offered.")
+    ProviderId.entries.forEach { id ->
+        val profile = ProviderAccess.profile(id)
+        val canToggle = ProviderAccess.active(id) == com.airachabanda.app.core.model.ParticipationMode.ASSISTED
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
+                Text(profile.labels.joinToString(", ") { label ->
+                    when (label) {
+                        AccessLabel.FREE_API -> "Free API available"
+                        AccessLabel.FREE_CHAT -> "Free chat available"
+                        AccessLabel.CONFIGURATION_REQUIRED -> "Configuration required"
+                        AccessLabel.BILLING_VERIFICATION_REQUIRED -> "Billing verification required"
+                        AccessLabel.LOCAL_INFERENCE -> "Local inference"
+                        AccessLabel.UNAVAILABLE -> "Unavailable"
+                    }
+                })
+                Text(profile.note, style = MaterialTheme.typography.bodySmall)
+            }
+            if (canToggle) {
+                Switch(checked = id in enabled, onCheckedChange = { onToggle(id, it) })
+            }
+        }
     }
 }
 

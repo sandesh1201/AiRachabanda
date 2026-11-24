@@ -187,6 +187,7 @@ fun AIRachabandaApp(
                     val rounds by model.maxRounds.collectAsState()
                     val openRouterStatus by model.openRouterStatus.collectAsState()
                     val directCredentials by model.directCredentials.collectAsState()
+                    val enabled by model.enabledParticipants.collectAsState()
                     SettingsDetail(
                         section = entry.arguments?.getString("section").orEmpty(),
                         providers = providers,
@@ -208,6 +209,8 @@ fun AIRachabandaApp(
                         onRemoveCloudflare = { model.removeCloudflare { message -> notice(message) } },
                         onSaveGemini = { secret -> model.saveGemini(secret) { message -> notice(message) } },
                         onRemoveGemini = { model.removeGemini { message -> notice(message) } },
+                        enabledProviders = enabled,
+                        onToggleParticipant = model::setParticipantEnabled,
                         contentPadding = padding,
                     )
                 }
@@ -269,6 +272,7 @@ private fun CouncilRoute(
     val messages by model.messages.collectAsState()
     val tasks by model.tasks.collectAsState()
     val stage by model.stage.collectAsState()
+    val enabled by model.enabledParticipants.collectAsState()
     CouncilScreen(
         conversation = conversation,
         messages = messages,
@@ -301,6 +305,13 @@ private fun CouncilRoute(
         onResume = { conversationId?.let { model.resume(it, notice) } },
         onStop = { conversationId?.let { model.stop(it, notice) } },
         onCopy = { text -> notice(ExternalLinks.copy(application, "AI Rachabanda prompt", text)) },
+        onCopyAndOpen = { task ->
+            val conversation = conversationId ?: return@CouncilScreen
+            model.rememberAssisted(conversation, task.id, task.providerId)
+            notice(ExternalLinks.copy(application, "AI Rachabanda prompt", task.prompt))
+            val chat = com.airachabanda.app.provider.ProviderAccess.profile(task.providerId).chatUrl
+            if (chat != null) notice(ExternalLinks.openHttps(application, chat))
+        },
         onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
         onSkip = { taskId -> conversationId?.let { model.skip(it, taskId) } },
         onDefer = model::defer,
@@ -309,6 +320,7 @@ private fun CouncilRoute(
             val conversation = conversationId.orEmpty()
             navController.navigate("import?provider=${provider.name}&task=$task&conversation=$conversation")
         },
+        enabledProviders = enabled,
         contentPadding = padding,
     )
 }
@@ -326,13 +338,21 @@ private fun ImportRoute(
 ) {
     val model: ImportViewModel = viewModel(factory = factory)
     val conversations by model.conversations.collectAsState()
+    val ready by model.ready.collectAsState()
+    val recovered by model.recovered.collectAsState()
     val provider = providerName?.let { runCatching { ProviderId.valueOf(it) }.getOrNull() } ?: ProviderId.CLAUDE
+    if (conversationId.isNullOrBlank() && !ready) {
+        EmptyPanel("Returning to the saved conversation.", Modifier.padding(padding))
+        return
+    }
+    val saved = if (conversationId.isNullOrBlank()) recovered else null
     ImportScreen(
         conversations = conversations,
         initialBody = sharedText.orEmpty(),
-        initialProvider = provider,
-        initialConversationId = conversationId,
-        taskId = taskId?.takeIf { it.isNotBlank() },
+        initialProvider = saved?.providerId ?: provider,
+        initialConversationId = conversationId?.takeIf { it.isNotBlank() } ?: saved?.conversationId,
+        taskId = taskId?.takeIf { it.isNotBlank() } ?: saved?.taskId?.takeIf { it.isNotBlank() },
+        recovered = saved,
         onImport = { draft, callback ->
             model.import(draft) { ok, message ->
                 notice(message)

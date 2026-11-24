@@ -349,6 +349,8 @@ private fun ResearchTaskEntity.toModel() = ResearchTask(
     prompt = prompt,
     createdAtEpochMs = createdAtEpochMs,
     updatedAtEpochMs = updatedAtEpochMs,
+    role = role,
+    kind = kind,
 )
 
 private fun WorkflowEventEntity.toModel() = WorkflowEvent(

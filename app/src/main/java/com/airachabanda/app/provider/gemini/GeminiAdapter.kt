@@ -64,6 +64,7 @@ class GeminiAdapter(
         freeTierKnown: Boolean = false,
         paidModel: Boolean = false,
         quotaExhausted: Boolean = false,
+        credentialBoundToProject: Boolean = false,
     ): GeminiOutcome {
         val decision = GeminiBillingPolicy.assess(
             billingLinked = billingLinked,
@@ -72,6 +73,7 @@ class GeminiAdapter(
             toolsOrGrounding = false,
             quotaExhausted = quotaExhausted,
             sessionBudgetRemaining = sessionBudgetRemaining,
+            credentialBoundToProject = credentialBoundToProject,
         )
         if (!decision.accepted) {
             return GeminiOutcome(OpenRouterFailure.POLICY, ResponseDisposition.FAILED, decision.reason)

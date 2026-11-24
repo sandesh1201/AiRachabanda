@@ -42,6 +42,8 @@ Research and follow-up tasks leave one automated request unused for an automated
 
 `PreparedProviderDispatch` uses the same storage rules for Cloudflare and Gemini. Production authorization for both is off, so `dispatchPrepared` does not call the network. Two hosts of one verified model stay a same-model review.
 
+Milestone 005D classifies each provider as a free automated API, free assisted chat, local inference, or unavailable. Production does not treat any API as protected, so active participants are assisted or omitted. A waiting assisted task does not block an unrelated automated task. Assisted prompts are framed as on-device preparation, and an import stays user-supplied. Cloudflare is free only when Workers Free is positively identified. Gemini billing is accepted only when the credential is bound to the project that was read. Neither check is sent by this build.
+
 Review labels are `SELF_CRITIQUE`, `SAME_MODEL_REVIEW`, `CROSS_MODEL_REVIEW`, and `INDEPENDENCE_UNVERIFIED`. The same participant reviewing its own role is reduced verification. Different hosts of the same verified model are not independent. Unknown or user-declared identity cannot establish independence. Cross-model agreement is not proof.
 
 One OpenRouter account can hold several eligible catalog models. Each participant key is the provider plus the model id. The production source still emits one participant per configured provider. It does not invent model ids. Room schema version 4 adds `capabilityNote` and `provider_completions` through `Migrations.MIGRATION_3_4`.

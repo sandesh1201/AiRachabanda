@@ -99,6 +99,17 @@ On the same Pixel 9a guest, with the 0.5.1 debug build installed:
 - A synthetic Gemini key typed in the app is not shown after Save. Verify connection opens a dialog that names the model-list and Cloud Billing endpoints and leaves Send metadata check disabled. Remove credentials returns the screen to no stored key.
 - Instrumentation passed on a retry. The first run lost one process result after the test method had finished. The retry finished all six tests.
 
+## Device checks for Milestone 005D
+
+On the same Pixel 9a guest, with the 0.5.2 debug build installed:
+
+- `wm size` reports physical 1080×2424 and no override.
+- `wm density` reports physical 420 and no override.
+- `display_size_forced` is null.
+- AI Providers lists the catalog with assisted chat labels. ChatGPT starts off. Claude starts on. Gemini shows free chat and billing verification. API-only providers stay off until billing protection is established. No upgrade or credit purchase is offered.
+- An assisted Council task shows the provider, role, task, prepared prompt, Copy and open chat, Import response, and the next pending task. The prompt states that the provider is not connected automatically.
+- Copy and open chat is an explicit action. The app does not read the clipboard.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

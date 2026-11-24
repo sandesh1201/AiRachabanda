@@ -42,8 +42,9 @@ import com.airachabanda.app.core.model.ProviderKind
 import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.core.model.ResearchTask
 import com.airachabanda.app.core.model.WorkflowEvent
-import com.airachabanda.app.orchestration.ZeroCostPolicy
 import com.airachabanda.app.provider.PlanCatalog
+import com.airachabanda.app.provider.AccessLabel
+import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderRegistry
 
 @Composable
@@ -99,12 +100,12 @@ private fun ProviderCard(
                 style = MaterialTheme.typography.labelLarge,
             )
             Text("Account status: ${config.accountChoice.label()}")
-            Text("Integration mode: ${config.participationMode.label()}")
-            Text("Availability: ${availability(config)}")
-            Text(definition.summary, style = MaterialTheme.typography.bodySmall)
+            Text(accessLine(config.providerId))
+            Text(ProviderAccess.profile(config.providerId).note, style = MaterialTheme.typography.bodySmall)
+            val chat = ProviderAccess.profile(config.providerId).chatUrl
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (definition.officialHttpsUrl != null && config.participationMode == ParticipationMode.ASSISTED) {
-                    Button(onClick = { onOpenUrl(definition.officialHttpsUrl) }) {
+                if (chat != null) {
+                    Button(onClick = { onOpenUrl(chat) }) {
                         Text("Open ${definition.displayName}")
                     }
                     OutlinedButton(onClick = onOpenCouncil) { Text("AI Council") }
@@ -138,10 +139,12 @@ fun CouncilScreen(
     onResume: () -> Unit,
     onStop: () -> Unit,
     onCopy: (String) -> Unit,
+    onCopyAndOpen: (ResearchTask) -> Unit,
     onOpenUrl: (String) -> Unit,
     onSkip: (String) -> Unit,
     onDefer: (String) -> Unit,
     onImport: (ProviderId, String?) -> Unit,
+    enabledProviders: Set<ProviderId>,
     contentPadding: PaddingValues,
 ) {
     var mode by rememberSaveable(conversation?.id) {
@@ -150,12 +153,12 @@ fun CouncilScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     var question by rememberSaveable { mutableStateOf("") }
     var objection by rememberSaveable { mutableStateOf("") }
-    var claudeSelected by rememberSaveable { mutableStateOf(true) }
-    var chatGptSelected by rememberSaveable { mutableStateOf(false) }
-    val selectedProviders = buildSet {
-        if (claudeSelected) add(ProviderId.CLAUDE)
-        if (chatGptSelected) add(ProviderId.CHATGPT)
+    var selectedRaw by rememberSaveable(enabledProviders.sortedBy { it.name }.joinToString(",")) {
+        mutableStateOf(enabledProviders.joinToString(","))
     }
+    val selectedProviders = selectedRaw.split(',').mapNotNull { name ->
+        runCatching { ProviderId.valueOf(name) }.getOrNull()
+    }.toSet()
     Column(Modifier.fillMaxSize().padding(contentPadding)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = { onNewChat(mode) }) { Text("New Chat") }
@@ -234,8 +237,16 @@ fun CouncilScreen(
                 Text("Verification: ${stage?.verification ?: "Not started"}.")
                 Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = claudeSelected, onClick = { claudeSelected = !claudeSelected }, label = { Text("Claude") })
-                    FilterChip(selected = chatGptSelected, onClick = { chatGptSelected = !chatGptSelected }, label = { Text("ChatGPT") })
+                    enabledProviders.sortedBy { it.name }.forEach { id ->
+                        FilterChip(
+                            selected = id in selectedProviders,
+                            onClick = {
+                                val next = if (id in selectedProviders) selectedProviders - id else selectedProviders + id
+                                selectedRaw = next.joinToString(",")
+                            },
+                            label = { Text(ProviderRegistry.definition(id).displayName) },
+                        )
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onStart(question, selectedProviders) }, enabled = question.isNotBlank()) { Text("Start discussion") }
@@ -261,20 +272,18 @@ fun CouncilScreen(
                     minLines = 2,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { onPrepare(ProviderId.CLAUDE, question, mode, selectedProviders) },
-                        enabled = question.isNotBlank(),
-                    ) { Text("Prepare Claude prompt") }
-                    Button(
-                        onClick = { onPrepare(ProviderId.CHATGPT, question, mode, selectedProviders) },
-                        enabled = question.isNotBlank(),
-                    ) { Text("Prepare ChatGPT prompt") }
+                    selectedProviders.sortedBy { it.name }.forEach { id ->
+                        Button(
+                            onClick = { onPrepare(id, question, mode, selectedProviders) },
+                            enabled = question.isNotBlank(),
+                        ) { Text("Prepare ${ProviderRegistry.definition(id).displayName}") }
+                    }
                 }
                 Button(
                     onClick = onPrepareCritique,
                     enabled = stage?.sessionId != null,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Prepare Claude critique") }
+                ) { Text("Prepare critique") }
                 androidx.compose.material3.OutlinedTextField(
                     value = objection,
                     onValueChange = { objection = it },
@@ -294,17 +303,17 @@ fun CouncilScreen(
                     OutlinedButton(onClick = onRequestVerification) { Text("Request verification") }
                 }
                 OutlinedButton(onClick = onPrepareSynthesis) { Text("Prepare synthesis") }
-                ProviderRegistry.definition(ProviderId.CLAUDE).officialHttpsUrl?.let { url ->
-                    OutlinedButton(onClick = { onOpenUrl(url) }) { Text("Open Claude") }
+                val next = tasks.firstOrNull {
+                    it.state == AssistedTaskState.AWAITING_USER_RESPONSE || it.state == AssistedTaskState.DEFERRED
                 }
-                ProviderRegistry.definition(ProviderId.CHATGPT).officialHttpsUrl?.let { url ->
-                    OutlinedButton(onClick = { onOpenUrl(url) }) { Text("Open ChatGPT") }
+                if (next != null) {
+                    Text("Next pending task: ${ProviderRegistry.definition(next.providerId).displayName}, ${next.kind.lowercase()}.")
                 }
                 if (tasks.isEmpty()) {
                     EmptyPanel("No assisted task is waiting. Preparing a prompt does not mean the provider is researching.")
                 } else {
                     tasks.forEach { task ->
-                        TaskCard(task, onCopy, onSkip, onDefer) { onImport(task.providerId, task.id) }
+                        TaskCard(task, onCopyAndOpen, onSkip, onDefer) { onImport(task.providerId, task.id) }
                     }
                 }
             }
@@ -318,9 +327,12 @@ fun CouncilScreen(
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { answer() }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { discussion() }
-                item { answer() }
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                discussion()
+                answer()
             }
         }
     }
@@ -340,7 +352,7 @@ private fun MessageCard(message: ChatMessage) {
 @Composable
 private fun TaskCard(
     task: ResearchTask,
-    onCopy: (String) -> Unit,
+    onCopyAndOpen: (ResearchTask) -> Unit,
     onSkip: (String) -> Unit,
     onDefer: (String) -> Unit,
     onImport: () -> Unit,
@@ -348,12 +360,13 @@ private fun TaskCard(
     val name = ProviderRegistry.definition(task.providerId).displayName
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("$name · Round ${task.roundNumber}", style = MaterialTheme.typography.titleSmall)
+            Text("$name · ${task.role.replace('_', ' ').lowercase()} · ${task.kind.lowercase()}", style = MaterialTheme.typography.titleSmall)
             Text("State: ${task.state.label()}")
+            Text("This prompt is prepared on this device. ${name} is not researching automatically.")
             Text(task.prompt, style = MaterialTheme.typography.bodySmall)
             if (task.state == AssistedTaskState.AWAITING_USER_RESPONSE || task.state == AssistedTaskState.DEFERRED) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { onCopy(task.prompt) }) { Text("Copy prompt") }
+                    TextButton(onClick = { onCopyAndOpen(task) }) { Text("Copy and open chat") }
                     TextButton(onClick = onImport) { Text("Import response") }
                     TextButton(onClick = { onSkip(task.id) }) { Text("Skip") }
                     TextButton(onClick = { onDefer(task.id) }) { Text("Defer") }
@@ -462,14 +475,18 @@ private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
 }
 
-private fun availability(config: ProviderConfig): String {
-    val automated = ZeroCostPolicy.automatedInferenceAllowed(config.providerId, config.billingEligibility)
-    return when {
-        automated && config.participationMode == ParticipationMode.AUTOMATED -> "Automated participation is allowed"
-        config.participationMode == ParticipationMode.ASSISTED -> "Assisted participation is available. Automation is off."
-        config.billingEligibility == BillingEligibility.UNKNOWN -> "Billing status is unknown, so automation is blocked."
-        else -> "Automated participation is unavailable."
+private fun accessLine(id: ProviderId): String {
+    val labels = ProviderAccess.profile(id).labels.joinToString(", ") { label ->
+        when (label) {
+            AccessLabel.FREE_API -> "Free API available"
+            AccessLabel.FREE_CHAT -> "Free chat available"
+            AccessLabel.CONFIGURATION_REQUIRED -> "Configuration required"
+            AccessLabel.BILLING_VERIFICATION_REQUIRED -> "Billing verification required"
+            AccessLabel.LOCAL_INFERENCE -> "Local inference"
+            AccessLabel.UNAVAILABLE -> "Unavailable"
+        }
     }
+    return "Access: $labels"
 }
 
 private fun AccountChoice.label(): String = when (this) {

@@ -167,5 +167,5 @@ object ProviderRegistry {
 
     fun definition(id: ProviderId): ProviderDefinition = all.first { it.id == id }
 
-    val assistedImportProviders: Set<ProviderId> = setOf(ProviderId.CLAUDE, ProviderId.CHATGPT)
+    val assistedImportProviders: Set<ProviderId> = ProviderAccess.assistedProviders().toSet()
 }

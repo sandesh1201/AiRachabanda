@@ -68,7 +68,7 @@ class ActivityViewModel(container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
-class CouncilViewModel(container: AppContainer) : ViewModel() {
+class CouncilViewModel(private val container: AppContainer) : ViewModel() {
     private val repository = container.repository
     private val workflow = CouncilWorkflow(
         engine = container.orchestration,
@@ -87,6 +87,8 @@ class CouncilViewModel(container: AppContainer) : ViewModel() {
     val tasks: StateFlow<List<ResearchTask>> = selectedConversationId
         .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.observeTasks(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val enabledParticipants: StateFlow<Set<ProviderId>> = container.preferences.enabledParticipants
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.airachabanda.app.provider.ProviderAccess.defaultEnabled)
     val stage: StateFlow<CouncilStage?> = kotlinx.coroutines.flow.combine(selectedConversationId, revision) { id, _ -> id }
         .flatMapLatest { id ->
             if (id == null) flowOf<CouncilStage?>(null) else kotlinx.coroutines.flow.flow { emit(workflow.inspect(id)) }
@@ -99,6 +101,10 @@ class CouncilViewModel(container: AppContainer) : ViewModel() {
 
     fun select(conversationId: String?) {
         selectedConversationId.value = conversationId
+    }
+
+    fun rememberAssisted(conversationId: String, taskId: String, providerId: ProviderId) {
+        viewModelScope.launch { container.preferences.rememberAssisted(conversationId, taskId, providerId) }
     }
 
     fun create(mode: ResearchMode, onCreated: (String) -> Unit) {
@@ -231,6 +237,17 @@ class ImportViewModel(container: AppContainer) : ViewModel() {
     )
     val conversations: StateFlow<List<Conversation>> = repository.observeConversations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val recoveredState = MutableStateFlow<com.airachabanda.app.persistence.AssistedReturn?>(null)
+    private val assistedReady = MutableStateFlow(false)
+    val recovered: StateFlow<com.airachabanda.app.persistence.AssistedReturn?> = recoveredState
+    val ready: StateFlow<Boolean> = assistedReady
+
+    init {
+        viewModelScope.launch {
+            recoveredState.value = container.preferences.currentAssisted()
+            assistedReady.value = true
+        }
+    }
 
     fun import(draft: ImportDraft, onResult: (Boolean, String) -> Unit) {
         val check = ImportRules.check(draft.providerId, draft.body, draft.roundNumber)
@@ -285,6 +302,12 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false to false)
+    val enabledParticipants: StateFlow<Set<ProviderId>> = preferences.enabledParticipants
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.airachabanda.app.provider.ProviderAccess.defaultEnabled)
+
+    fun setParticipantEnabled(providerId: ProviderId, enabled: Boolean) {
+        viewModelScope.launch { preferences.setParticipantEnabled(providerId, enabled) }
+    }
 
     fun setAppearance(mode: AppearanceMode) {
         viewModelScope.launch { preferences.setAppearance(mode) }

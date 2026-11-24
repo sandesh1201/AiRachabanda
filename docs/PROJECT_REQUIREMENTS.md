@@ -101,6 +101,8 @@ Milestone 005B does not send that metadata check until the owner confirms it in 
 
 Milestone 005C adds Cloudflare Workers AI and Gemini API adapters with separate billing rules. Neither adapter treats a successful credential as proof of a free plan. Live metadata and live inference stay off. OpenRouter remains installed and is not required for these adapters.
 
+Milestone 005D classifies free chat separately from a free API. Providers with an official free chat can participate by assisted prompt and import. Automated inference stays off until billing protection is positively established. A missing paid subscription is not treated as Workers Free.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.
