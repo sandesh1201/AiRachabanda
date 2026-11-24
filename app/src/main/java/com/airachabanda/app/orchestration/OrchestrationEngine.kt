@@ -34,6 +34,8 @@ import com.airachabanda.app.persistence.VerificationResultEntity
 import com.airachabanda.app.persistence.WorkflowCheckpointEntity
 import com.airachabanda.app.persistence.WorkflowEventEntity
 import com.airachabanda.app.provider.ProviderRegistry
+import com.airachabanda.app.provider.dispatch.PreparedCall
+import com.airachabanda.app.provider.dispatch.PreparedProviderDispatch
 import com.airachabanda.app.provider.openrouter.DispatchCommand
 import com.airachabanda.app.provider.openrouter.DispatchOutcome
 import com.airachabanda.app.provider.openrouter.OpenRouterCandidate
@@ -95,6 +97,7 @@ class OrchestrationEngine(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val ids: () -> String = { UUID.randomUUID().toString() },
     private val dispatcher: OpenRouterDispatch? = null,
+    private val prepared: PreparedProviderDispatch? = null,
 ) {
     private val mutex = Mutex()
 
@@ -1007,6 +1010,28 @@ class OrchestrationEngine(
                 apiKey = apiKey,
                 roundNumber = task.roundNumber,
             ),
+        )
+    }
+
+    suspend fun dispatchPrepared(sessionId: String, taskId: String, call: PreparedCall): DispatchOutcome = mutex.withLock {
+        val task = council.tasksForSession(sessionId).firstOrNull { it.id == taskId }
+            ?: return DispatchOutcome(OpenRouterFailure.POLICY, "The task is not in this session.", completed = false)
+        val session = discussion.session(sessionId)
+            ?: return DispatchOutcome(OpenRouterFailure.POLICY, "The session is not open.", completed = false)
+        val remaining = session.requestBudget - session.requestsConsumed
+        if (remaining <= 0) {
+            return DispatchOutcome(OpenRouterFailure.BUDGET_BLOCKED, "The session request budget is exhausted. No request was sent.", completed = false)
+        }
+        val active = prepared
+            ?: return DispatchOutcome(OpenRouterFailure.POLICY, "No Cloudflare or Gemini dispatcher is connected. No request was sent.", completed = false)
+        return active.dispatch(
+            sessionId = sessionId,
+            conversationId = task.conversationId,
+            taskId = taskId,
+            roundNumber = task.roundNumber,
+            prompt = task.prompt,
+            sessionBudgetRemaining = remaining,
+            call = call,
         )
     }
 

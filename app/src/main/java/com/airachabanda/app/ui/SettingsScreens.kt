@@ -25,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.Conversation
@@ -54,6 +55,8 @@ fun SettingsRoot(
         "privacy" to "Privacy & Security",
         "storage" to "Storage",
         "openrouter" to "OpenRouter",
+        "cloudflare" to "Cloudflare Workers AI",
+        "gemini" to "Gemini API",
         "about" to "About",
     )
     LazyColumn(contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -83,10 +86,16 @@ fun SettingsDetail(
     onSaveOpenRouter: (String) -> Unit,
     onRemoveOpenRouter: () -> Unit,
     onConfirmOpenRouterMetadata: () -> Unit,
+    cloudflareReady: Boolean,
+    geminiReady: Boolean,
+    onSaveCloudflare: (String, String) -> Unit,
+    onRemoveCloudflare: () -> Unit,
+    onSaveGemini: (String) -> Unit,
+    onRemoveGemini: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(
-        Modifier.fillMaxSize().padding(contentPadding).padding(16.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         when (section) {
@@ -146,11 +155,31 @@ fun SettingsDetail(
             }
             "storage" -> StorageSettings(onDelete)
             "openrouter" -> OpenRouterSettings(openRouterStatus, onSaveOpenRouter, onRemoveOpenRouter, onConfirmOpenRouterMetadata)
+            "cloudflare" -> DirectProviderSettings(
+                title = "Cloudflare Workers AI",
+                stored = cloudflareReady,
+                credentialLabel = "API token",
+                accountLabel = "Account ID",
+                status = cloudflareStatus(cloudflareReady),
+                consent = "A confirmed check would send GET https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search and GET https://api.cloudflare.com/client/v4/accounts/{account_id}/subscriptions. The token needs Workers AI Read and Workers AI Edit. The plan read also needs Billing Read. This build does not send either request.",
+                onSave = { account, secret -> onSaveCloudflare(account, secret) },
+                onRemove = onRemoveCloudflare,
+            )
+            "gemini" -> DirectProviderSettings(
+                title = "Gemini API",
+                stored = geminiReady,
+                credentialLabel = "API key",
+                accountLabel = null,
+                status = geminiStatus(geminiReady),
+                consent = "A confirmed check would send GET https://generativelanguage.googleapis.com/v1beta/models with the key in the x-goog-api-key header. That call does not show whether billing is linked. Proving billing is unlinked needs GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo and permission billing.resourceAssociations.get. This build does not send either request. Free-tier prompts and responses may be used to improve Google products.",
+                onSave = { _, secret -> onSaveGemini(secret) },
+                onRemove = onRemoveGemini,
+            )
             else -> {
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.5.0. OpenRouter metadata waits for confirmation in this screen. Chat completions stay off.")
+                Text("Version 0.5.1. Cloudflare and Gemini adapters are installed. Live metadata and inference stay off. OpenRouter chat completions stay off.")
             }
         }
     }
@@ -349,3 +378,99 @@ fun ImportScreen(
         }) { Text("Add to AI Council") }
     }
 }
+
+private data class ProviderStatusLines(
+    val credential: String,
+    val authentication: String,
+    val billing: String,
+    val models: String,
+    val capabilities: String,
+    val usage: String,
+    val verified: String,
+    val blockers: String,
+)
+
+private fun cloudflareStatus(stored: Boolean) = ProviderStatusLines(
+    credential = if (stored) "Account ID and API token are stored in Android Keystore. Neither is shown again." else "No Cloudflare credential is stored.",
+    authentication = "Not checked. Saving a token does not call Cloudflare.",
+    billing = "Unknown. Workers Free cannot be inferred from a Workers AI token.",
+    models = "None discovered. Live model search is not authorized.",
+    capabilities = "Text generation is the only prepared capability. Streaming is prepared and not enabled.",
+    usage = "Documented Workers Free allocation is 10,000 Neurons per day. Remaining Neurons are unknown.",
+    verified = "Never",
+    blockers = "Plan verification needs Billing Read on the subscriptions endpoint. Paid-required models and AI Gateway prepaid credits are rejected. Inference stays off.",
+)
+
+private fun geminiStatus(stored: Boolean) = ProviderStatusLines(
+    credential = if (stored) "An API key is stored in Android Keystore and is not shown again." else "No Gemini API key is stored.",
+    authentication = "Not checked. Saving a key does not call Gemini.",
+    billing = "Unknown. A successful key check is not proof that billing is unlinked.",
+    models = "None discovered. Live model listing is not authorized.",
+    capabilities = "Text generation is prepared. Grounding, search, caching, and tools stay off.",
+    usage = "Free-tier limits are not copied from an old table. Remaining quota is unknown.",
+    verified = "Never",
+    blockers = "Project billing can be read only with Cloud Billing permission billing.resourceAssociations.get. That permission is not requested. Free-tier content may be used to improve Google products. Inference stays off.",
+)
+
+@Composable
+private fun DirectProviderSettings(
+    title: String,
+    stored: Boolean,
+    credentialLabel: String,
+    accountLabel: String?,
+    status: ProviderStatusLines,
+    consent: String,
+    onSave: (String, String) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var account by rememberSaveable { mutableStateOf("") }
+    var secret by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    Text(title, style = MaterialTheme.typography.headlineSmall)
+    Text("Credential status: ${status.credential}")
+    Text("Authentication status: ${status.authentication}")
+    Text("Billing eligibility: ${status.billing}")
+    Text("Eligible models: ${status.models}")
+    Text("Capabilities: ${status.capabilities}")
+    Text("Usage limits: ${status.usage}")
+    Text("Last verification: ${status.verified}")
+    Text("Integration blockers: ${status.blockers}")
+    if (accountLabel != null) {
+        OutlinedTextField(
+            value = account,
+            onValueChange = { account = it.trim() },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(accountLabel) },
+            singleLine = true,
+        )
+    }
+    OutlinedTextField(
+        value = secret,
+        onValueChange = { secret = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(credentialLabel) },
+        visualTransformation = PasswordVisualTransformation(),
+        singleLine = true,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            onSave(account, secret)
+            account = ""
+            secret = ""
+        }, enabled = secret.isNotBlank() && (accountLabel == null || account.isNotBlank())) { Text("Save") }
+        TextButton(onClick = onRemove, enabled = stored) { Text("Remove credentials") }
+    }
+    Button(onClick = { confirm = true }, enabled = stored) { Text("Verify connection") }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Metadata stays off") },
+            text = { Text(consent) },
+            confirmButton = {
+                TextButton(onClick = {}, enabled = false) { Text("Send metadata check") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Close") } },
+        )
+    }
+}
+

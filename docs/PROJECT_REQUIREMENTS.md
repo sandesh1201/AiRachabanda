@@ -97,7 +97,9 @@ Milestone 004B adds Android Keystore instrumentation, an OpenRouter adapter that
 
 Milestone 005A distinguishes truncated and interrupted streams from completed answers. Room schema version 5 records that disposition. OpenRouter metadata can be requested only after an in-app confirmation, and only for the key and models endpoints. A stored key and a successful authentication check do not unlock chat completions.
 
-Milestone 005B does not send that metadata check until the owner confirms it in the app. A zero credit limit, `max_price`, and a manual plugin setting are not treated as a complete zero-cost guarantee. ChatGPT and Claude remain assisted. GitHub Models is retired. Cloudflare Workers AI and the Gemini API Free tier are the next candidates and are not enabled.
+Milestone 005B does not send that metadata check until the owner confirms it in the app. A zero credit limit, `max_price`, and a manual plugin setting are not treated as a complete zero-cost guarantee. ChatGPT and Claude remain assisted. GitHub Models is retired.
+
+Milestone 005C adds Cloudflare Workers AI and Gemini API adapters with separate billing rules. Neither adapter treats a successful credential as proof of a free plan. Live metadata and live inference stay off. OpenRouter remains installed and is not required for these adapters.
 
 ## Toolchain pin for Milestone 003
 

@@ -8,6 +8,11 @@ import com.airachabanda.app.persistence.AppDatabase
 import com.airachabanda.app.persistence.CouncilRepository
 import com.airachabanda.app.persistence.Migrations
 import com.airachabanda.app.persistence.UserPreferences
+import com.airachabanda.app.provider.cloudflare.CloudflareAdapter
+import com.airachabanda.app.provider.cloudflare.CloudflareAuthorization
+import com.airachabanda.app.provider.dispatch.PreparedProviderDispatch
+import com.airachabanda.app.provider.gemini.GeminiAdapter
+import com.airachabanda.app.provider.gemini.GeminiAuthorization
 import com.airachabanda.app.provider.openrouter.OpenRouterAdapter
 import com.airachabanda.app.provider.openrouter.OpenRouterAuthorization
 import com.airachabanda.app.provider.openrouter.OpenRouterDispatch
@@ -60,6 +65,14 @@ class AppContainer(context: Application) {
         participants = DatabaseParticipantSource(database.councilDao()),
         dispatcher = OpenRouterDispatch(
             adapter = openRouterAdapter,
+            council = database.councilDao(),
+            discussion = database.discussionDao(),
+            clock = { System.currentTimeMillis() },
+            ids = { java.util.UUID.randomUUID().toString() },
+        ),
+        prepared = PreparedProviderDispatch(
+            cloudflare = CloudflareAdapter(UrlConnectionTransport(), CloudflareAuthorization.PRODUCTION),
+            gemini = GeminiAdapter(UrlConnectionTransport(), GeminiAuthorization.PRODUCTION),
             council = database.councilDao(),
             discussion = database.discussionDao(),
             clock = { System.currentTimeMillis() },

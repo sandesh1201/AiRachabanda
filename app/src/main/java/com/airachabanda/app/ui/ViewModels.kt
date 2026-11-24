@@ -271,6 +271,20 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), openRouterSnapshot(false, null))
+    val directCredentials: StateFlow<Pair<Boolean, Boolean>> = credentialRevision
+        .flatMapLatest {
+            kotlinx.coroutines.flow.flow {
+                val token = credentials.get(ProviderId.CLOUDFLARE.name, CLOUDFLARE_TOKEN)
+                val account = credentials.get(ProviderId.CLOUDFLARE.name, CLOUDFLARE_ACCOUNT)
+                val gemini = credentials.get(ProviderId.GEMINI.name, CredentialAccounts.DEFAULT)
+                val cloudflareReady = token is CredentialAccess.Available && account is CredentialAccess.Available
+                listOf(token, account, gemini).forEach { access ->
+                    if (access is CredentialAccess.Available) access.secret.fill(0)
+                }
+                emit(cloudflareReady to (gemini is CredentialAccess.Available))
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false to false)
 
     fun setAppearance(mode: AppearanceMode) {
         viewModelScope.launch { preferences.setAppearance(mode) }
@@ -328,6 +342,48 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun saveCloudflare(accountId: String, token: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            if (!ACCOUNT_ID.matches(accountId) || token.isBlank()) {
+                onResult("Enter a 32-character Cloudflare account ID and an API token. Nothing was stored.")
+                return@launch
+            }
+            credentials.put(ProviderId.CLOUDFLARE.name, CLOUDFLARE_ACCOUNT, accountId.toByteArray(Charsets.UTF_8))
+            credentials.put(ProviderId.CLOUDFLARE.name, CLOUDFLARE_TOKEN, token.toByteArray(Charsets.UTF_8))
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Cloudflare account ID and token were stored on this device. No Cloudflare request was sent.")
+        }
+    }
+
+    fun removeCloudflare(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            credentials.delete(ProviderId.CLOUDFLARE.name, CLOUDFLARE_ACCOUNT)
+            credentials.delete(ProviderId.CLOUDFLARE.name, CLOUDFLARE_TOKEN)
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Cloudflare credentials were removed from this device.")
+        }
+    }
+
+    fun saveGemini(apiKey: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            if (apiKey.isBlank()) {
+                onResult("Enter a Gemini API key. Nothing was stored.")
+                return@launch
+            }
+            credentials.put(ProviderId.GEMINI.name, CredentialAccounts.DEFAULT, apiKey.toByteArray(Charsets.UTF_8))
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Gemini API key was stored on this device. No Gemini request was sent.")
+        }
+    }
+
+    fun removeGemini(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            credentials.delete(ProviderId.GEMINI.name, CredentialAccounts.DEFAULT)
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Gemini API key was removed from this device.")
+        }
+    }
+
     fun deleteLocalData(onDone: () -> Unit) {
         viewModelScope.launch {
             repository.deleteAllLocalContent()
@@ -351,3 +407,7 @@ fun appViewModelFactory(container: AppContainer): ViewModelProvider.Factory =
             else -> error("Unknown view model ${modelClass.name}")
         } as T
     }
+
+private const val CLOUDFLARE_TOKEN = "api-token"
+private const val CLOUDFLARE_ACCOUNT = "account-id"
+private val ACCOUNT_ID = Regex("^[a-fA-F0-9]{32}$")

@@ -87,6 +87,18 @@ On the same Pixel 9a guest, with the 0.5.0 debug build installed:
 - Remove credential returns the screen to `NOT_CONFIGURED`.
 - Six instrumentation tests passed, including a Keystore read in a new process and deletion of that synthetic credential.
 
+## Device checks for Milestone 005C
+
+On the same Pixel 9a guest, with the 0.5.1 debug build installed:
+
+- `wm size` reports physical 1080×2424 and no override.
+- `wm density` reports physical 420 and no override.
+- `display_size_forced` is null.
+- Settings lists Cloudflare Workers AI and Gemini API.
+- The Cloudflare screen shows credential status, authentication, billing eligibility, eligible models, capabilities, usage limits, last verification, and the integration blocker. Verify connection stays disabled until a credential is stored, and this build does not send the request.
+- A synthetic Gemini key typed in the app is not shown after Save. Verify connection opens a dialog that names the model-list and Cloud Billing endpoints and leaves Send metadata check disabled. Remove credentials returns the screen to no stored key.
+- Instrumentation passed on a retry. The first run lost one process result after the test method had finished. The retry finished all six tests.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

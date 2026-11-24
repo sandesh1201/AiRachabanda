@@ -186,6 +186,7 @@ fun AIRachabandaApp(
                     val mode by model.researchMode.collectAsState()
                     val rounds by model.maxRounds.collectAsState()
                     val openRouterStatus by model.openRouterStatus.collectAsState()
+                    val directCredentials by model.directCredentials.collectAsState()
                     SettingsDetail(
                         section = entry.arguments?.getString("section").orEmpty(),
                         providers = providers,
@@ -201,6 +202,12 @@ fun AIRachabandaApp(
                         onSaveOpenRouter = { secret -> model.saveOpenRouterKey(secret) { message -> notice(message) } },
                         onRemoveOpenRouter = { model.removeOpenRouterKey { message -> notice(message) } },
                         onConfirmOpenRouterMetadata = { model.confirmOpenRouterMetadata { message -> notice(message) } },
+                        cloudflareReady = directCredentials.first,
+                        geminiReady = directCredentials.second,
+                        onSaveCloudflare = { account, secret -> model.saveCloudflare(account, secret) { message -> notice(message) } },
+                        onRemoveCloudflare = { model.removeCloudflare { message -> notice(message) } },
+                        onSaveGemini = { secret -> model.saveGemini(secret) { message -> notice(message) } },
+                        onRemoveGemini = { model.removeGemini { message -> notice(message) } },
                         contentPadding = padding,
                     )
                 }

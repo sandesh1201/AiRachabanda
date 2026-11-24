@@ -40,6 +40,8 @@ Research and follow-up tasks leave one automated request unused for an automated
 
 `OpenRouterDispatch` stores a stream only when its disposition is completed, truncated, or interrupted, and only when a generation id is present. A completed stream can become a message. A truncated or interrupted stream stays in `provider_completions` with that disposition and does not become a claim or a final answer. A second insert of the same generation id is a duplicate and does not consume the request budget again. Cancellation, failure, and an unknown outcome are not retried. Production inference authorization stays off, so `dispatchTask` still returns a policy refusal and writes nothing until a later milestone allows a call. Metadata reads use a separate confirmation and never call the chat endpoint.
 
+`PreparedProviderDispatch` uses the same storage rules for Cloudflare and Gemini. Production authorization for both is off, so `dispatchPrepared` does not call the network. Two hosts of one verified model stay a same-model review.
+
 Review labels are `SELF_CRITIQUE`, `SAME_MODEL_REVIEW`, `CROSS_MODEL_REVIEW`, and `INDEPENDENCE_UNVERIFIED`. The same participant reviewing its own role is reduced verification. Different hosts of the same verified model are not independent. Unknown or user-declared identity cannot establish independence. Cross-model agreement is not proof.
 
 One OpenRouter account can hold several eligible catalog models. Each participant key is the provider plus the model id. The production source still emits one participant per configured provider. It does not invent model ids. Room schema version 4 adds `capabilityNote` and `provider_completions` through `Migrations.MIGRATION_3_4`.
