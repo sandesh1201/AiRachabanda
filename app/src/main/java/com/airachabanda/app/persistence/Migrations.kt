@@ -336,4 +336,32 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_attachment_chunks_attachmentId` ON `attachment_chunks` (`attachmentId`)")
         }
     }
+
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `generated_documents` (
+                `id` TEXT NOT NULL,
+                `conversationId` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `templateId` TEXT NOT NULL,
+                `format` TEXT NOT NULL,
+                `filename` TEXT NOT NULL,
+                `mimeType` TEXT NOT NULL,
+                `sizeBytes` INTEGER NOT NULL,
+                `fingerprint` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `limitation` TEXT NOT NULL,
+                `versionNumber` INTEGER NOT NULL,
+                `sourceBody` TEXT NOT NULL,
+                `includeRecords` INTEGER NOT NULL,
+                `createdAtEpochMs` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`conversationId`) REFERENCES `conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_generated_documents_conversationId` ON `generated_documents` (`conversationId`)")
+        }
+    }
 }

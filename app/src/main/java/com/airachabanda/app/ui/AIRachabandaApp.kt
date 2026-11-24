@@ -2,6 +2,7 @@ package com.airachabanda.app.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
@@ -293,6 +294,14 @@ private fun CouncilRoute(
     val enabled by model.enabledParticipants.collectAsState()
     val attachments by model.attachments.collectAsState()
     val inspected by model.inspectedAttachment.collectAsState()
+    val documents by model.documents.collectAsState()
+    val documentPreview by model.documentPreview.collectAsState()
+    val context = LocalContext.current
+    val pendingSave = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val id = pendingSave.value
+        if (uri != null && id.isNotBlank()) model.exportDocument(id, uri, notice)
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val id = conversationId ?: return@rememberLauncherForActivityResult
         uris.forEach { uri ->
@@ -368,6 +377,35 @@ private fun CouncilRoute(
         onCancelAttachment = model::cancelAttachment,
         onInspectAttachment = model::inspectAttachment,
         onAttachmentConsent = { consent -> conversationId?.let { model.setAttachmentConsent(it, consent) } },
+        documents = documents,
+        documentPreview = documentPreview,
+        onGenerateDocument = { title, template, format, body, records ->
+            val id = conversationId ?: return@CouncilScreen
+            model.generateDocument(id, title, template, format, body, records, notice)
+        },
+        onCancelDocument = model::cancelDocument,
+        onInspectDocument = model::inspectDocument,
+        onDeleteDocument = model::removeDocument,
+        onShareDocument = { id ->
+            model.shareDocument(id) { intent ->
+                if (intent == null) notice("That document is not available.")
+                else context.startActivity(Intent.createChooser(intent, "Share document"))
+            }
+        },
+        onOpenDocument = { id ->
+            model.openDocument(id) { intent ->
+                if (intent == null) notice("That document is not available.")
+                else runCatching { context.startActivity(intent) }.onFailure {
+                    notice("No installed application accepted this file. It remains in app storage.")
+                }
+            }
+        },
+        onSaveDocument = { id ->
+            val item = documents.firstOrNull { it.id == id }
+            pendingSave.value = id
+            saveLauncher.launch(item?.filename ?: "document")
+        },
+        onRegenerateDocument = { id -> model.regenerateDocument(id, notice) },
         enabledProviders = enabled,
         contentPadding = padding,
     )

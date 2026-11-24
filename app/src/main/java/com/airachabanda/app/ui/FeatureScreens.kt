@@ -3,6 +3,7 @@ package com.airachabanda.app.ui
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -36,7 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.airachabanda.app.documents.ConversationAttachment
+import com.airachabanda.app.documents.DocumentGenerationLimits
 import com.airachabanda.app.documents.DocumentLimits
+import com.airachabanda.app.documents.DocumentTemplates
+import com.airachabanda.app.documents.GeneratedDocumentItem
+import com.airachabanda.app.documents.OutputFormat
 import com.airachabanda.app.core.model.AccountChoice
 import com.airachabanda.app.orchestration.CouncilStage
 import com.airachabanda.app.core.model.AppearanceMode
@@ -167,6 +174,16 @@ fun CouncilScreen(
     onCancelAttachment: (String) -> Unit,
     onInspectAttachment: (String) -> Unit,
     onAttachmentConsent: (Boolean) -> Unit,
+    documents: List<GeneratedDocumentItem>,
+    documentPreview: String,
+    onGenerateDocument: (String, String, String, String, Boolean) -> Unit,
+    onCancelDocument: (String) -> Unit,
+    onInspectDocument: (String) -> Unit,
+    onDeleteDocument: (String) -> Unit,
+    onShareDocument: (String) -> Unit,
+    onOpenDocument: (String) -> Unit,
+    onSaveDocument: (String) -> Unit,
+    onRegenerateDocument: (String) -> Unit,
     enabledProviders: Set<ProviderId>,
     contentPadding: PaddingValues,
 ) {
@@ -275,6 +292,18 @@ fun CouncilScreen(
                     }
                     if (inspectedAttachment.isNotBlank()) Text(inspectedAttachment)
                 }
+                LocalDocuments(
+                    documents = documents,
+                    preview = documentPreview,
+                    onGenerate = onGenerateDocument,
+                    onCancel = onCancelDocument,
+                    onInspect = onInspectDocument,
+                    onDelete = onDeleteDocument,
+                    onShare = onShareDocument,
+                    onOpen = onOpenDocument,
+                    onSave = onSaveDocument,
+                    onRegenerate = onRegenerateDocument,
+                )
                 if (renaming.isNotBlank()) {
                     AlertDialog(
                         onDismissRequest = { renaming = "" },
@@ -531,6 +560,97 @@ private fun TaskCard(
             }
         }
     }
+}
+
+@Composable
+private fun LocalDocuments(
+    documents: List<GeneratedDocumentItem>,
+    preview: String,
+    onGenerate: (String, String, String, String, Boolean) -> Unit,
+    onCancel: (String) -> Unit,
+    onInspect: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onShare: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    onSave: (String) -> Unit,
+    onRegenerate: (String) -> Unit,
+) {
+    var title by rememberSaveable { mutableStateOf("Local report") }
+    var body by rememberSaveable { mutableStateOf("") }
+    var template by rememberSaveable { mutableStateOf("business-report") }
+    var format by rememberSaveable { mutableStateOf(OutputFormat.PDF.name) }
+    var includeRecords by rememberSaveable { mutableStateOf(false) }
+    var templateMenu by rememberSaveable { mutableStateOf(false) }
+    var formatMenu by rememberSaveable { mutableStateOf(false) }
+    Text("Local document", style = MaterialTheme.typography.titleMedium)
+    Text(DocumentGenerationLimits.EXPLANATION, style = MaterialTheme.typography.bodySmall)
+    OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Document name") })
+    OutlinedTextField(
+        value = body,
+        onValueChange = { body = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Content") },
+        minLines = 3,
+    )
+    Text(
+        "Plain lines become paragraphs. ROW| cells, ITEM| bullets, AMOUNT|name|number, COMPARE|name|left|right, DATE, RATE, MATH, and LINK|label|https:// are recognized. No provider is contacted.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box {
+            OutlinedButton(onClick = { templateMenu = true }) { Text(DocumentTemplates.label(template)) }
+            DropdownMenu(expanded = templateMenu, onDismissRequest = { templateMenu = false }) {
+                DocumentTemplates.all.forEach { option ->
+                    DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                        template = option.id
+                        templateMenu = false
+                    })
+                }
+            }
+        }
+        Box {
+            OutlinedButton(onClick = { formatMenu = true }) { Text(OutputFormat.fromName(format)?.label ?: format) }
+            DropdownMenu(expanded = formatMenu, onDismissRequest = { formatMenu = false }) {
+                OutputFormat.entries.forEach { option ->
+                    DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                        format = option.name
+                        formatMenu = false
+                    })
+                }
+            }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = includeRecords, onCheckedChange = { includeRecords = it })
+        Text("Include stored messages, evidence, and objections. No provider is contacted.")
+    }
+    Button(
+        onClick = { onGenerate(title, template, format, body, includeRecords) },
+        enabled = title.isNotBlank(),
+    ) { Text("Generate") }
+    if (documents.isEmpty()) {
+        Text("No document has been rendered in this conversation.")
+    }
+    documents.forEach { item ->
+        Text("${item.format} · ${item.filename} · ${item.status} · version ${item.versionNumber} · ${item.sizeBytes} bytes")
+        if (item.limitation.isNotBlank()) Text(item.limitation, style = MaterialTheme.typography.bodySmall)
+        item.previewPath?.let { path ->
+            val bitmap = BitmapFactory.decodeFile(path)
+            if (bitmap != null) {
+                Image(bitmap = bitmap.asImageBitmap(), contentDescription = item.title, modifier = Modifier.width(180.dp).height(240.dp))
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { onInspect(item.id) }) { Text("Inspect") }
+            TextButton(onClick = { onSave(item.id) }) { Text("Save") }
+            TextButton(onClick = { onShare(item.id) }) { Text("Share") }
+            TextButton(onClick = { onOpen(item.id) }) { Text("Open") }
+            TextButton(onClick = { onRegenerate(item.id) }) { Text("Regenerate") }
+            TextButton(onClick = { onDelete(item.id) }) { Text("Delete") }
+            if (item.status == "GENERATING") TextButton(onClick = { onCancel(item.id) }) { Text("Cancel") }
+        }
+    }
+    if (preview.isNotBlank()) Text(preview)
 }
 
 @Composable

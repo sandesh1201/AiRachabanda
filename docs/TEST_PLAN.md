@@ -183,6 +183,15 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Extracted evidence keeps the attachment identifier and reference. Consent is required before that text is placed in a prompt. Removing an attachment deletes its file and chunks. The rows survive a process restart.
 - A council research prompt can include a labeled local attachment excerpt. That excerpt is not a live model response.
 
+## Milestone 010 checks
+
+- PDF, DOCX, XLSX, PPTX, CSV, TXT, Markdown, and JSON files are generated from labeled local text and read back with the existing extractor.
+- A research PDF has more than one page, a table, and page numbers.
+- A DOCX keeps a heading and a table. An XLSX keeps sheet names, a SUM formula, and a locally cached total. A PPTX has at least five slides.
+- A formula outside the allow-list is stored as text. No macro part is written.
+- An empty name, a cancelled render, a blocked storage directory, a second version, deletion of one version, and a database restart are covered.
+- The generated text is labeled as a local render. It is not a live model response.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

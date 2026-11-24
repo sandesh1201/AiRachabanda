@@ -48,6 +48,8 @@ Milestone 005E keeps that rule. A Gemini binding accepts the project returned by
 
 Milestone 005F prepares one Gemini request for `gemini-3.5-flash-lite` with a 128-token cap and no tools. The request stays unsent until metadata consent, inference consent, a ready OAuth token, and a looked-up project with billing disabled are all present. Android local traffic uses adb reverse to device loopback. The emulator alias `10.0.2.2` is rejected, and cleartext stays off.
 
+Milestone 010 adds Room schema version 8. Generated documents are stored beside the conversation and rendered from supplied text and stored records. Existing conversations stay in place through `Migrations.MIGRATION_7_8`. Rendering runs off the main thread. A generated file is not uploaded and is not an AI provider response.
+
 Milestone 009 adds Room schema version 7. Attachment rows and extracted chunks are new tables. Existing conversations stay in place through `Migrations.MIGRATION_6_7`. Files are copied into app storage. Extraction runs off the main thread. Prompt text includes an excerpt only after consent, and the original file is not uploaded. OCR is not installed.
 
 Milestone 008 adds public research on the same schema. Wikimedia, arXiv, and the Federal Register are the only connector hosts. A user-supplied URL must be HTTPS and must resolve to a public address before and after each redirect. Retrieved text is stored as untrusted data. The verification status stays retrieved and not assessed until a user or participant records an assessment. Arbitrary network access stays denied, so participant text cannot choose a destination. No AI inference request is added.

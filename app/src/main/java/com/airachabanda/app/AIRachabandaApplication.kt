@@ -3,6 +3,7 @@ package com.airachabanda.app
 import android.app.Application
 import androidx.room.Room
 import com.airachabanda.app.documents.AttachmentService
+import com.airachabanda.app.documents.GeneratedDocumentService
 import com.airachabanda.app.orchestration.DatabaseParticipantSource
 import com.airachabanda.app.orchestration.OrchestrationEngine
 import com.airachabanda.app.persistence.AppDatabase
@@ -46,6 +47,7 @@ class AppContainer(context: Application) {
         Migrations.MIGRATION_4_5,
         Migrations.MIGRATION_5_6,
         Migrations.MIGRATION_6_7,
+        Migrations.MIGRATION_7_8,
     )
         .build()
 
@@ -66,6 +68,11 @@ class AppContainer(context: Application) {
     fun consentedMetadataAdapter(): OpenRouterAdapter = OpenRouterAdapter(
         transport = UrlConnectionTransport(),
         authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
+    )
+    val documents = GeneratedDocumentService(
+        context = context,
+        council = database.councilDao(),
+        discussion = database.discussionDao(),
     )
     val attachments = AttachmentService(
         context = context,

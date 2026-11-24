@@ -13,8 +13,8 @@ android {
         applicationId = "com.airachabanda.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.9.0"
+        versionCode = 18
+        versionName = "0.10.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }

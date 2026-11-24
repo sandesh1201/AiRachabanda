@@ -2,11 +2,13 @@
 
 package com.airachabanda.app.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.airachabanda.app.documents.ConversationAttachment
+import com.airachabanda.app.documents.GeneratedDocumentItem
 import com.airachabanda.app.AppContainer
 import com.airachabanda.app.core.model.AccountChoice
 import com.airachabanda.app.core.model.AppearanceMode
@@ -101,6 +103,11 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
         .map { rows -> rows.map { container.attachments.toItem(it) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val inspectedAttachment: MutableStateFlow<String> = MutableStateFlow("")
+    val documents: StateFlow<List<GeneratedDocumentItem>> = selectedConversationId
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else container.councilDao.observeGeneratedDocuments(id) }
+        .map { rows -> rows.map { container.documents.toItem(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val documentPreview: MutableStateFlow<String> = MutableStateFlow("")
     val stage: StateFlow<CouncilStage?> = kotlinx.coroutines.flow.combine(selectedConversationId, revision) { id, _ -> id }
         .flatMapLatest { id ->
             if (id == null) flowOf<CouncilStage?>(null) else kotlinx.coroutines.flow.flow { emit(workflow.inspect(id)) }
@@ -159,6 +166,61 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
     fun inspectAttachment(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             inspectedAttachment.value = container.attachments.inspect(id)
+        }
+    }
+
+    fun generateDocument(
+        conversationId: String,
+        title: String,
+        templateId: String,
+        formatName: String,
+        body: String,
+        includeRecords: Boolean,
+        onResult: (String) -> Unit,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = container.documents.generate(conversationId, title, templateId, formatName, body, includeRecords)
+            withContext(Dispatchers.Main) { onResult(message) }
+        }
+    }
+
+    fun regenerateDocument(id: String, onResult: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = container.documents.regenerate(id)
+            withContext(Dispatchers.Main) { onResult(message) }
+        }
+    }
+
+    fun removeDocument(id: String) {
+        viewModelScope.launch(Dispatchers.IO) { container.documents.remove(id) }
+    }
+
+    fun cancelDocument(id: String) {
+        container.documents.cancel(id)
+    }
+
+    fun inspectDocument(id: String) {
+        viewModelScope.launch(Dispatchers.IO) { documentPreview.value = container.documents.inspect(id) }
+    }
+
+    fun shareDocument(id: String, onReady: (Intent?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val intent = container.documents.shareIntent(id)
+            withContext(Dispatchers.Main) { onReady(intent) }
+        }
+    }
+
+    fun openDocument(id: String, onReady: (Intent?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val intent = container.documents.openIntent(id)
+            withContext(Dispatchers.Main) { onReady(intent) }
+        }
+    }
+
+    fun exportDocument(id: String, destination: Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val message = container.documents.export(id, destination)
+            withContext(Dispatchers.Main) { onResult(message) }
         }
     }
 

@@ -446,7 +446,61 @@ interface CouncilDao {
         height: Int,
         orientation: Int,
     )
+
+    @Query("SELECT * FROM generated_documents WHERE conversationId = :conversationId ORDER BY createdAtEpochMs ASC")
+    fun observeGeneratedDocuments(conversationId: String): Flow<List<GeneratedDocumentEntity>>
+
+    @Query("SELECT * FROM generated_documents WHERE conversationId = :conversationId ORDER BY createdAtEpochMs ASC")
+    suspend fun generatedDocuments(conversationId: String): List<GeneratedDocumentEntity>
+
+    @Query("SELECT * FROM generated_documents WHERE id = :id")
+    suspend fun generatedDocument(id: String): GeneratedDocumentEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertGeneratedDocument(entity: GeneratedDocumentEntity)
+
+    @Query(
+        """
+        UPDATE generated_documents
+        SET status = :status, sizeBytes = :size, fingerprint = :fingerprint, limitation = :limitation
+        WHERE id = :id
+        """,
+    )
+    suspend fun updateGeneratedDocument(id: String, status: String, size: Long, fingerprint: String, limitation: String)
+
+    @Query("DELETE FROM generated_documents WHERE id = :id")
+    suspend fun deleteGeneratedDocument(id: String)
 }
+
+@Entity(
+    tableName = "generated_documents",
+    foreignKeys = [
+        ForeignKey(
+            entity = ConversationEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["conversationId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("conversationId")],
+)
+data class GeneratedDocumentEntity(
+    @PrimaryKey val id: String,
+    val conversationId: String,
+    val title: String,
+    val templateId: String,
+    val format: String,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val fingerprint: String,
+    val status: String,
+    val limitation: String,
+    val versionNumber: Int,
+    val sourceBody: String,
+    val includeRecords: Boolean,
+    val createdAtEpochMs: Long,
+)
 
 @Database(
     entities = [
@@ -474,8 +528,9 @@ interface CouncilDao {
         ProtocolActionEntity::class,
         ProviderCompletionEntity::class,
         TaskDependencyEntity::class,
+        GeneratedDocumentEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
