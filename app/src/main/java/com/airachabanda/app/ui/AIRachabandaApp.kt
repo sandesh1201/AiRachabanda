@@ -188,6 +188,7 @@ fun AIRachabandaApp(
                     val openRouterStatus by model.openRouterStatus.collectAsState()
                     val directCredentials by model.directCredentials.collectAsState()
                     val enabled by model.enabledParticipants.collectAsState()
+                    val geminiVerification by model.geminiVerification.collectAsState()
                     SettingsDetail(
                         section = entry.arguments?.getString("section").orEmpty(),
                         providers = providers,
@@ -209,6 +210,9 @@ fun AIRachabandaApp(
                         onRemoveCloudflare = { model.removeCloudflare { message -> notice(message) } },
                         onSaveGemini = { secret -> model.saveGemini(secret) { message -> notice(message) } },
                         onRemoveGemini = { model.removeGemini { message -> notice(message) } },
+                        geminiVerification = geminiVerification,
+                        onVerifyGemini = { token, done -> model.verifyGemini(token, done) },
+                        onInferGemini = { token, done -> model.inferGemini(token, done) },
                         enabledProviders = enabled,
                         onToggleParticipant = model::setParticipantEnabled,
                         contentPadding = padding,

@@ -107,6 +107,8 @@ Milestone 005E prepares a Gemini key lookup that accepts only the project return
 
 Milestone 005F keeps Gemini metadata and the one prepared free-tier request unsent until an Android OAuth client is registered and billingEnabled is false for the looked-up project. Android reaches a Windows Ollama server only through adb reverse to device loopback. Cleartext stays off.
 
+Milestone 005G uses the Android AuthorizationClient for cloud-platform.read-only and sends lookup, billing, and one free-tier generation only after separate in-app confirmations. The eligible text models come from the pricing page, not from model discovery alone. No source flag is required after those checks pass. Local inference stays uninstalled.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

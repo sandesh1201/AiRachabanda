@@ -22,6 +22,7 @@ object RedactedLog {
         Regex("""(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|code_verifier|authorization)\s*[:=]\s*\S+"""),
         Regex("""(?i)keyString=[^&\s]+"""),
         Regex("""AIza[0-9A-Za-z_\-]{20,}"""),
+        Regex("""ya29\.[0-9A-Za-z_\-]+"""),
         Regex("""sk-[A-Za-z0-9_\-]{8,}"""),
     )
 

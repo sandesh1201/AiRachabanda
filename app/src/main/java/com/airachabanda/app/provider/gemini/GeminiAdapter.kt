@@ -133,7 +133,7 @@ class GeminiAdapter(
         }
         val request = HttpExchange(
             method = "POST",
-            url = "https://generativelanguage.googleapis.com/v1beta/models/${GeminiLiveGate.FREE_MODEL}:streamGenerateContent?alt=sse",
+            url = "https://generativelanguage.googleapis.com/v1beta/models/${gate.modelId}:streamGenerateContent?alt=sse",
             headers = mapOf("Content-Type" to "application/json", "Accept" to "text/event-stream"),
             body = GeminiLiveGate.requestBody().toString(),
         )
@@ -142,7 +142,7 @@ class GeminiAdapter(
             OpenRouterFailure.POLICY,
             ResponseDisposition.FAILED,
             "The free-tier request is prepared and was not sent.",
-            GeminiLiveGate.FREE_MODEL,
+            gate.modelId,
             request = request,
         )
     }

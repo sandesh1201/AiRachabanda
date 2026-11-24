@@ -32,8 +32,6 @@ class Milestone005fTest {
         freeTierKnown = true,
         sessionBudgetRemaining = 1,
         quotaExhausted = false,
-        metadataRelease = true,
-        inferenceRelease = true,
     )
 
     @Test
@@ -67,9 +65,11 @@ class Milestone005fTest {
     fun unknownPricingMissingConsentAndBudgetBlockTheSingleRequest() {
         assertFalse(GeminiLiveGate.inference(ready().copy(freeTierKnown = false)).permitted)
         assertFalse(GeminiLiveGate.inference(ready().copy(modelId = "gemini-unknown")).permitted)
-        assertFalse(GeminiLiveGate.metadata(ready().copy(metadataConsent = false, metadataRelease = true)).permitted)
+        assertFalse(GeminiLiveGate.inference(ready().copy(modelId = "gemini-2.5-flash-lite")).permitted)
+        assertTrue(GeminiLiveGate.inference(ready().copy(modelId = "gemini-3.1-flash-lite")).permitted)
+        assertFalse(GeminiLiveGate.metadata(ready().copy(metadataConsent = false)).permitted)
+        assertFalse(GeminiLiveGate.metadata(ready().copy(oauthState = GeminiLiveGate.OauthState.CANCELLED)).permitted)
         assertFalse(GeminiLiveGate.inference(ready().copy(inferenceConsent = false)).permitted)
-        assertFalse(GeminiLiveGate.inference(ready().copy(inferenceRelease = false)).permitted)
         assertFalse(GeminiLiveGate.inference(ready().copy(sessionBudgetRemaining = 0)).permitted)
         assertFalse(GeminiLiveGate.inference(ready().copy(quotaExhausted = true)).permitted)
     }

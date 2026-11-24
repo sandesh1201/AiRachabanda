@@ -127,6 +127,14 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Logs redact an API key, an access token, and a lookup query.
 - 10.0.2.2 is rejected. 127.0.0.1 remains the adb-reverse route. Cleartext stays disabled.
 
+## Milestone 005G checks
+
+- Missing consent, a cancelled authorization, an expired token, and a missing permission do not continue into billing or generation.
+- A billing project that does not match the key lookup is rejected. billingEnabled true and a missing billingEnabled value are rejected.
+- Model discovery cannot select a paid or grounding-priced model. The selected model must also support generateContent.
+- One generation is sent only after billing is revalidated as false. A second request in the same budget is not sent.
+- A wrong numeric answer is recorded as wrong. A rate limit does not retry. Logs and summaries omit the key and token.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

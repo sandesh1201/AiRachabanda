@@ -14,7 +14,9 @@ import com.airachabanda.app.core.model.Conversation
 import com.airachabanda.app.core.model.ImportDraft
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.provider.gemini.GeminiOwnerSession
 import com.airachabanda.app.provider.openrouter.OpenRouterSnapshot
+import com.airachabanda.app.provider.openrouter.UrlConnectionTransport
 import com.airachabanda.app.provider.openrouter.openRouterSnapshot
 import com.airachabanda.app.provider.openrouter.snapshotFromReport
 import com.airachabanda.app.security.CredentialAccess
@@ -278,6 +280,11 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     val maxRounds: StateFlow<Int> = preferences.maxRounds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 3)
     private val credentialRevision = MutableStateFlow(0)
+    private val geminiSession = GeminiOwnerSession(UrlConnectionTransport())
+    private var geminiRecord: GeminiOwnerSession.Record? = null
+    private var geminiBudget = 1
+    private val geminiStatus = MutableStateFlow("No Gemini metadata check has run.")
+    val geminiVerification: StateFlow<String> = geminiStatus
     val openRouterStatus: StateFlow<OpenRouterSnapshot> = credentialRevision
         .flatMapLatest {
             kotlinx.coroutines.flow.flow {
@@ -394,6 +401,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
                 return@launch
             }
             credentials.put(ProviderId.GEMINI.name, CredentialAccounts.DEFAULT, apiKey.toByteArray(Charsets.UTF_8))
+            geminiRecord = null
+            geminiStatus.value = "The API key changed. Billing eligibility was cleared. No Gemini request was sent."
             credentialRevision.value = credentialRevision.value + 1
             onResult("The Gemini API key was stored on this device. No Gemini request was sent.")
         }
@@ -402,9 +411,50 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun removeGemini(onResult: (String) -> Unit) {
         viewModelScope.launch {
             credentials.delete(ProviderId.GEMINI.name, CredentialAccounts.DEFAULT)
+            geminiRecord = null
+            geminiStatus.value = "The API key was removed. Billing eligibility was cleared."
             credentialRevision.value = credentialRevision.value + 1
             onResult("The Gemini API key was removed from this device.")
         }
+    }
+
+    fun verifyGemini(accessToken: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val apiKey = readGeminiKey()
+            if (apiKey == null) {
+                onResult("No Gemini API key is stored. No lookup was sent.")
+                return@launch
+            }
+            val report = geminiSession.verifyMetadata(apiKey, accessToken, metadataConsent = true)
+            geminiRecord = report.record
+            geminiStatus.value = report.summary
+            onResult(report.summary)
+        }
+    }
+
+    fun inferGemini(accessToken: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val apiKey = readGeminiKey()
+            if (apiKey == null) {
+                onResult("No Gemini API key is stored. No generation request was sent.")
+                return@launch
+            }
+            val report = geminiSession.infer(apiKey, accessToken, geminiRecord, inferenceConsent = true, budgetRemaining = geminiBudget)
+            if (report.sent) geminiBudget = report.budgetRemaining
+            if (report.summary.contains("changed") || report.summary.contains("enabled") || report.summary.contains("different project")) {
+                geminiRecord = null
+                geminiStatus.value = report.summary
+            }
+            onResult(report.summary)
+        }
+    }
+
+    private suspend fun readGeminiKey(): String? {
+        val access = credentials.get(ProviderId.GEMINI.name, CredentialAccounts.DEFAULT)
+        if (access !is CredentialAccess.Available) return null
+        val key = access.secret.toString(Charsets.UTF_8)
+        access.secret.fill(0)
+        return key
     }
 
     fun deleteLocalData(onDone: () -> Unit) {

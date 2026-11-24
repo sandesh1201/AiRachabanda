@@ -1,5 +1,7 @@
 package com.airachabanda.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,12 +24,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.activity.ComponentActivity
+import com.airachabanda.app.provider.gemini.GeminiAuthOutcome
+import com.airachabanda.app.provider.gemini.GeminiFreeCatalog
+import com.airachabanda.app.provider.gemini.InstallIdentity
+import com.airachabanda.app.provider.gemini.PlayServicesGeminiAuthorizer
+import kotlinx.coroutines.launch
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.Conversation
 import com.airachabanda.app.core.model.ImportDraft
@@ -95,6 +106,9 @@ fun SettingsDetail(
     onRemoveCloudflare: () -> Unit,
     onSaveGemini: (String) -> Unit,
     onRemoveGemini: () -> Unit,
+    geminiVerification: String,
+    onVerifyGemini: (String, (String) -> Unit) -> Unit,
+    onInferGemini: (String, (String) -> Unit) -> Unit,
     enabledProviders: Set<ProviderId>,
     onToggleParticipant: (ProviderId, Boolean) -> Unit,
     contentPadding: PaddingValues,
@@ -172,14 +186,17 @@ fun SettingsDetail(
             )
             "gemini" -> GeminiGuidedSetup(
                 stored = geminiReady,
+                verification = geminiVerification,
                 onSave = onSaveGemini,
                 onRemove = onRemoveGemini,
+                onVerify = onVerifyGemini,
+                onInfer = onInferGemini,
             )
             else -> {
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.5.4. Free chat is assisted. Gemini metadata and inference stay off until you authorize them in this app. Local inference is not installed.")
+                Text("Version 0.5.5. Free chat is assisted. Gemini sends a metadata check or one free-tier request only after you confirm it here. Local inference is not installed.")
             }
         }
     }
@@ -414,26 +431,67 @@ private fun geminiStatus(stored: Boolean) = ProviderStatusLines(
     capabilities = "Text generation is prepared. Grounding, search, caching, and tools stay off.",
     usage = "Free-tier limits are not copied from an old table. Remaining quota is unknown.",
     verified = "Never",
-    blockers = "Lookup needs apikeys.keys.lookup. Billing needs resourcemanager.projects.get on the looked-up project. The Android OAuth client is not registered, so neither request is sent. Free-tier content may be used to improve Google products.",
+    blockers = "Lookup needs apikeys.keys.lookup. Billing needs resourcemanager.projects.get. The Android OAuth client must match this package and certificate. Free-tier content may be used to improve Google products.",
 )
 
 @Composable
 private fun GeminiGuidedSetup(
     stored: Boolean,
+    verification: String,
     onSave: (String) -> Unit,
     onRemove: () -> Unit,
+    onVerify: (String, (String) -> Unit) -> Unit,
+    onInfer: (String, (String) -> Unit) -> Unit,
 ) {
     var secret by rememberSaveable { mutableStateOf("") }
     var notice by rememberSaveable { mutableStateOf("No Google request has been sent.") }
-    var metadataConsent by rememberSaveable { mutableStateOf(false) }
     var showMetadata by rememberSaveable { mutableStateOf(false) }
     var showInference by rememberSaveable { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    val authorizer = remember(activity) { activity?.let(::PlayServicesGeminiAuthorizer) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        authorizer?.onAuthorizationResult(result)
+    }
+    val scope = rememberCoroutineScope()
+    val billingReady = verification.contains("billingEnabled is false")
+    fun begin(kind: String) {
+        val current = authorizer
+        if (current == null) {
+            notice = "This screen cannot start Google authorization. No request was sent."
+            return
+        }
+        busy = true
+        scope.launch {
+            val outcome = current.authorize { launcher.launch(it) }
+            when (outcome) {
+                GeminiAuthOutcome.Cancelled -> {
+                    notice = "Authorization was cancelled. No lookup or generation request was sent."
+                    busy = false
+                }
+                is GeminiAuthOutcome.Rejected -> {
+                    notice = outcome.detail
+                    busy = false
+                }
+                is GeminiAuthOutcome.Granted -> {
+                    val deliver: (String) -> Unit = { message ->
+                        notice = message
+                        busy = false
+                    }
+                    if (kind == "metadata") onVerify(outcome.accessToken, deliver) else onInfer(outcome.accessToken, deliver)
+                }
+            }
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Gemini API", style = MaterialTheme.typography.headlineSmall)
-        Text("The Gemini API key cannot prove which project it belongs to. A separate read-only Google sign-in is required. The scope is cloud-platform.read-only. The account needs apikeys.keys.lookup and resourcemanager.projects.get on the project that owns the key. A typed project ID is not accepted.")
-        Text("The lookup is GET https://apikeys.googleapis.com/v2/keys:lookupKey. Billing is GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo for that parent only. billingEnabled must be false. Free-tier prompts and responses may be used to improve Google products.")
-        Text("Create an Android OAuth client for package com.airachabanda.app and this build's SHA-1. Do not create a Web client and do not put a client secret in the app. Until that client exists, authorization cannot start.")
-        Text(if (stored) "An API key is stored in Android Keystore and is not shown again." else "No Gemini API key is stored.")
+        Text("The Gemini API key cannot prove which project it belongs to. A separate read-only Google sign-in is required because the key itself cannot call lookup or Cloud Billing. The only scope is cloud-platform.read-only. The account needs apikeys.keys.lookup and resourcemanager.projects.get. A typed project ID is not accepted.")
+        Text("Sign-in uses Google Play services AuthorizationClient for this Android package. There is no client secret in the app. ${InstallIdentity.describe(context)}")
+        Text("Lookup is GET https://apikeys.googleapis.com/v2/keys:lookupKey. Billing is GET https://cloudbilling.googleapis.com/v1/projects/{project}/billingInfo for that parent. If the billing project id differs from the lookup parent, the app also reads GET https://cloudresourcemanager.googleapis.com/v1/projects/{project}. billingEnabled must be false.")
+        Text("Documented free-tier text models: ${GeminiFreeCatalog.TEXT_MODELS.joinToString(", ")}. ${GeminiFreeCatalog.PROTECTION} ${GeminiFreeCatalog.BILLING_LIMIT}")
+        Text(if (stored) "An API key is stored in Android Keystore and is not shown again." else "No Gemini API key is stored. Enter it here. Do not paste it into a chat.")
+        Text(verification)
         Text(notice)
         OutlinedTextField(
             value = secret,
@@ -448,23 +506,22 @@ private fun GeminiGuidedSetup(
                 onSave(secret)
                 secret = ""
                 notice = "The key field was cleared. No Gemini request was sent."
-            }, enabled = secret.isNotBlank()) { Text("Save") }
-            TextButton(onClick = onRemove, enabled = stored) { Text("Remove credentials") }
+            }, enabled = secret.isNotBlank() && !busy) { Text("Save") }
+            TextButton(onClick = onRemove, enabled = stored && !busy) { Text("Remove credentials") }
         }
-        Button(onClick = { showMetadata = true }, enabled = stored) { Text("Review metadata check") }
-        Button(onClick = { showInference = true }, enabled = metadataConsent) { Text("Review one inference request") }
+        Button(onClick = { showMetadata = true }, enabled = stored && !busy) { Text("Check project billing") }
+        Button(onClick = { showInference = true }, enabled = stored && billingReady && !busy) { Text("Send one free-tier question") }
     }
     if (showMetadata) {
         AlertDialog(
             onDismissRequest = { showMetadata = false },
             title = { Text("Read Gemini project billing?") },
-            text = { Text("This would contact only the key lookup and the billing read for the project that owns the stored key. It does not send a prompt. The Android OAuth client is not registered, so this build will not send either request.") },
+            text = { Text("Google's account screen will ask for read-only access. After you allow it, the app calls key lookup and billing for the project that owns the stored key. It does not send the test prompt. Cancel leaves the network unused.") },
             confirmButton = {
                 TextButton(onClick = {
                     showMetadata = false
-                    metadataConsent = true
-                    notice = "Metadata consent is recorded. No lookup or billing request was sent."
-                }) { Text("Record consent") }
+                    begin("metadata")
+                }) { Text("Continue") }
             },
             dismissButton = { TextButton(onClick = { showMetadata = false }) { Text("Cancel") } },
         )
@@ -473,12 +530,12 @@ private fun GeminiGuidedSetup(
         AlertDialog(
             onDismissRequest = { showInference = false },
             title = { Text("Send one free-tier question?") },
-            text = { Text("The prepared prompt asks what 17 multiplied by 23 is, with at most 128 output tokens, no tools, and no retry. Billing has not been verified, so the request will not be sent.") },
+            text = { Text("This sends one request: what is 17 multiplied by 23, at most 128 output tokens, no tools, no grounding, no search, no cache, and no retry. Billing is read again first. If billing is enabled or unknown, the question is not sent.") },
             confirmButton = {
                 TextButton(onClick = {
                     showInference = false
-                    notice = "Inference consent is recorded. Billing eligibility is not established, so no generation request was sent."
-                }) { Text("Record consent") }
+                    begin("inference")
+                }) { Text("Send once") }
             },
             dismissButton = { TextButton(onClick = { showInference = false }) { Text("Cancel") } },
         )

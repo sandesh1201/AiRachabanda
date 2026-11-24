@@ -9,6 +9,7 @@ object GeminiProjectBinding {
     const val OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform.read-only"
     const val LOOKUP_PERMISSION = "apikeys.keys.lookup"
     const val BILLING_PERMISSION = "resourcemanager.projects.get"
+    const val RESOURCE_MANAGER_URL = "https://cloudresourcemanager.googleapis.com/v1/projects"
 
     data class KeyLookup(val parent: String, val resourceName: String)
 
@@ -16,7 +17,10 @@ object GeminiProjectBinding {
         val projectId: String,
         val billingEnabled: Boolean?,
         val billingAccountName: String,
+        val resourceName: String = "",
     )
+
+    data class ProjectIdentity(val projectNumber: String, val projectId: String)
 
     data class Binding(
         val projectId: String?,
@@ -29,11 +33,30 @@ object GeminiProjectBinding {
     fun billingUrl(projectId: String): String =
         "https://cloudbilling.googleapis.com/v1/projects/$projectId/billingInfo"
 
-    fun assess(lookup: KeyLookup?, billing: ProjectBillingRead?, typedProjectId: String?): Binding {
+    fun sameProject(
+        parent: String,
+        billing: ProjectBillingRead,
+        identity: ProjectIdentity? = null,
+    ): Boolean {
+        val suffix = projectIdFromParent(parent) ?: return false
+        if (billing.projectId == suffix) return true
+        if (billing.resourceName == "$parent/billingInfo") return true
+        return identity != null &&
+            identity.projectNumber == suffix &&
+            identity.projectId.isNotBlank() &&
+            identity.projectId == billing.projectId
+    }
+
+    fun assess(
+        lookup: KeyLookup?,
+        billing: ProjectBillingRead?,
+        typedProjectId: String?,
+        identity: ProjectIdentity? = null,
+    ): Binding {
         val projectId = lookup?.parent?.let(::projectIdFromParent)
         val named = lookup != null && lookup.resourceName.isNotBlank() && projectId != null
         val typedConflict = !typedProjectId.isNullOrBlank() && typedProjectId != projectId
-        val billingMatches = named && billing != null && billing.projectId == projectId
+        val billingMatches = lookup != null && billing != null && named && sameProject(lookup.parent, billing, identity)
         val unlinked = billingMatches && billing?.billingEnabled == false
         val reason = when {
             lookup == null -> "No key lookup was supplied. A typed project ID is not the key's project."
@@ -41,10 +64,10 @@ object GeminiProjectBinding {
             projectId == null -> "The key lookup parent was not a project resource."
             typedConflict -> "The typed project ID does not match the project that owns the API key."
             billing == null -> "The key belongs to $projectId. Billing for that project was not read."
-            billing.projectId != projectId -> "Billing was read for a different project than the key lookup."
+            !billingMatches -> "Billing was read for a different project than the key lookup."
             billing.billingEnabled == null -> "The billing read did not say whether billing is enabled."
             billing.billingEnabled -> "The project that owns the API key has billing enabled."
-            else -> "The API key belongs to $projectId and billingEnabled is false. Live metadata was not sent."
+            else -> "The API key belongs to $projectId and billingEnabled is false."
         }
         return Binding(
             projectId = if (named && !typedConflict) projectId else null,

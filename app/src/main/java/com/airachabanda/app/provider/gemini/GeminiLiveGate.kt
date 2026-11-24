@@ -5,11 +5,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Decides whether a Gemini metadata read or the one prepared inference call may leave the device.
- * Production callers keep both release flags false.
+ * Decides whether a Gemini metadata read or the one free-tier inference call may leave the device.
+ * Consent, a ready token, and a verified unlinked project are sufficient. No source flag is required.
  */
 object GeminiLiveGate {
-    const val FREE_MODEL = "gemini-3.5-flash-lite"
+    const val FREE_MODEL = GeminiFreeCatalog.PREFERRED
     const val PROMPT = "What is 17 multiplied by 23? Return the result and a brief explanation."
     const val MAX_OUTPUT_TOKENS = 128
     const val EXPECTED_PRODUCT = 391
@@ -17,6 +17,7 @@ object GeminiLiveGate {
 
     enum class OauthState {
         MISSING,
+        CANCELLED,
         EXPIRED,
         PERMISSION_DENIED,
         READY,
@@ -31,8 +32,6 @@ object GeminiLiveGate {
         val freeTierKnown: Boolean,
         val sessionBudgetRemaining: Int,
         val quotaExhausted: Boolean,
-        val metadataRelease: Boolean = false,
-        val inferenceRelease: Boolean = false,
     )
 
     data class Decision(val permitted: Boolean, val reason: String)
@@ -40,7 +39,7 @@ object GeminiLiveGate {
     fun metadata(input: Input): Decision {
         val reason = when {
             !input.metadataConsent -> "Metadata consent was not given. No Google request was sent."
-            !input.metadataRelease -> "Metadata consent is recorded. The release flag is off, so no Google request was sent."
+            input.oauthState == OauthState.CANCELLED -> "Google authorization was cancelled. No lookup was sent."
             input.oauthState == OauthState.MISSING -> "Read-only Google authorization is missing. No lookup was sent."
             input.oauthState == OauthState.EXPIRED -> "The Google authorization has expired. No lookup was sent."
             input.oauthState == OauthState.PERMISSION_DENIED -> "The Google authorization is missing apikeys.keys.lookup or resourcemanager.projects.get. No lookup was sent."
@@ -52,11 +51,10 @@ object GeminiLiveGate {
     fun inference(input: Input): Decision {
         val reason = when {
             !input.inferenceConsent -> "Inference consent was not given. No Gemini generation request was sent."
-            !input.inferenceRelease -> "Inference consent is recorded. The release flag is off, so no generation request was sent."
             input.oauthState != OauthState.READY -> "Google authorization is not ready. No generation request was sent."
             !input.binding.credentialBoundToProject -> "The API key is not bound to the project whose billing was read."
             !input.binding.billingUnlinked -> "Billing is not shown to be disabled for the key's project. No generation request was sent."
-            input.modelId != FREE_MODEL -> "The model is not the verified free-tier model."
+            !GeminiFreeCatalog.eligible(input.modelId) -> "The model is not on the documented free-tier text list."
             !input.freeTierKnown -> "Free-tier pricing for this model is unknown. No generation request was sent."
             input.quotaExhausted -> "The free-tier allowance is exhausted. No further request is sent."
             input.sessionBudgetRemaining <= 0 -> "The session request budget is exhausted."
