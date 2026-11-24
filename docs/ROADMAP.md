@@ -12,9 +12,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 004B: Android Keystore instrumentation on the emulator. Fail-closed OpenRouter adapter and configuration screen. Reviewer classifications. Room schema version 4. No live metadata request and no live inference.
 - Milestone 005A: Stream outcomes distinguish truncation from completion. In-app confirmation can call the OpenRouter key and models endpoints. Chat completions stay off. Room schema version 5.
 
+- Milestone 005B: OpenRouter metadata was not sent because no credential was stored. Billing safeguards were re-read. Cloudflare Workers AI and the Gemini API Free tier are the next provider candidates. Inference stays off.
+
 ## Next
 
-Milestone 005B is not authorized. The owner must enter a restricted key in the app and confirm the metadata check before any live catalog result exists. A chat completion stays out of scope until that result and a later instruction name one explicit model.
+The owner must revoke the exposed OpenRouter key, enter a replacement in the app, and confirm the metadata check. No chat completion is authorized. Cloudflare and Gemini are candidates only. GitHub Models is retired.
 
 ## Later
 

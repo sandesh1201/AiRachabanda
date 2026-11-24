@@ -97,6 +97,8 @@ Milestone 004B adds Android Keystore instrumentation, an OpenRouter adapter that
 
 Milestone 005A distinguishes truncated and interrupted streams from completed answers. Room schema version 5 records that disposition. OpenRouter metadata can be requested only after an in-app confirmation, and only for the key and models endpoints. A stored key and a successful authentication check do not unlock chat completions.
 
+Milestone 005B does not send that metadata check until the owner confirms it in the app. A zero credit limit, `max_price`, and a manual plugin setting are not treated as a complete zero-cost guarantee. ChatGPT and Claude remain assisted. GitHub Models is retired. Cloudflare Workers AI and the Gemini API Free tier are the next candidates and are not enabled.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.
