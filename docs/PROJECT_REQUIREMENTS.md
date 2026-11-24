@@ -111,6 +111,8 @@ Milestone 005G uses the Android AuthorizationClient for cloud-platform.read-only
 
 Milestone 006A extends the Council with structured participant requests, role assignment from the current session, Devil's Advocate objections only when they name a recorded claim, and a synthesis assembled from stored records. Assisted providers still require the user to import responses. No live provider request is added.
 
+Milestone 006B adds a deterministic discussion plan, a task dependency graph, and concurrency limits. Participant text cannot raise the budget or authorize billing, credentials, network access, or code execution. The recorded synthesis remains a stored-record fallback. No live provider request is added.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

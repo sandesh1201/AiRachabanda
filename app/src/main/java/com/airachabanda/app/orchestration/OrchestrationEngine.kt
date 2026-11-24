@@ -30,6 +30,7 @@ import com.airachabanda.app.persistence.RebuttalEntity
 import com.airachabanda.app.persistence.RequestBudgetEntryEntity
 import com.airachabanda.app.persistence.ResearchSessionEntity
 import com.airachabanda.app.persistence.ResearchTaskEntity
+import com.airachabanda.app.persistence.TaskDependencyEntity
 import com.airachabanda.app.persistence.VerificationResultEntity
 import com.airachabanda.app.persistence.WorkflowCheckpointEntity
 import com.airachabanda.app.persistence.WorkflowEventEntity
@@ -136,16 +137,30 @@ class OrchestrationEngine(
             move(sessionId, SessionState.BLOCKED, "No eligible participant. No response was invented.")
             return@withLock snapshot(sessionId)
         }
+        val plan = DiscussionPlanner.plan(
+            DiscussionPlanner.Signals(
+                objective = question,
+                mode = start.mode,
+                explicitCapabilities = start.requiredCapabilities,
+                participantCount = eligible.size,
+                requestBudget = start.requestBudget,
+                deadlineEpochMs = start.deadlineEpochMs,
+                nowEpochMs = now,
+                consequences = start.mode == ResearchMode.DEEP_RESEARCH,
+            ),
+        )
+        discussion.updatePlan(
+            id = sessionId,
+            planSource = plan.source,
+            concurrencyLimit = plan.concurrencyLimit,
+            delegationDepthLimit = plan.delegationDepthLimit,
+            fanOutLimit = plan.fanOutLimit,
+            planNote = plan.note,
+            verificationRequired = plan.verificationRequired,
+            updatedAt = clock(),
+        )
         val capabilities = start.requiredCapabilities.toMutableSet()
-        when (start.mode) {
-            ResearchMode.STANDARD -> capabilities += RoleAssignment.CRITIQUE
-            ResearchMode.DEEP_RESEARCH -> {
-                capabilities += RoleAssignment.CRITIQUE
-                capabilities += RoleAssignment.VERIFICATION
-            }
-            ResearchMode.QUICK -> Unit
-            ResearchMode.CUSTOM -> Unit
-        }
+        capabilities += plan.addedCapabilities
         val grants = RoleAssignment.assign(
             participants = eligible,
             complexity = start.complexity,
@@ -159,17 +174,23 @@ class OrchestrationEngine(
         val userContext = council.messages(start.conversationId)
             .filter { it.source == MessageSource.USER.name }
             .map { it.body }
-        val researchPrompt = IndependentBrief.research(question, userContext)
-        grants.filter { it.role == ParticipantRole.RESEARCHER }.forEach { grant ->
-            val participant = participantFor(sessionId, grant.providerId)
-            createTask(
-                participant = participant,
-                role = ParticipantRole.RESEARCHER,
-                kind = KIND_RESEARCH,
-                prompt = researchPrompt,
-                round = 1,
-                targetId = null,
+        if (plan.decompose && TaskGraph.hasCycle(plan.tasks.flatMap { work -> work.dependsOn.map { dependency -> work.localId to dependency } })) {
+            discussion.updatePlan(
+                id = sessionId,
+                planSource = plan.source,
+                concurrencyLimit = plan.concurrencyLimit,
+                delegationDepthLimit = plan.delegationDepthLimit,
+                fanOutLimit = plan.fanOutLimit,
+                planNote = "${plan.note} Circular dependency rejected. One research task was kept.",
+                verificationRequired = plan.verificationRequired,
+                updatedAt = clock(),
             )
+            createIndependentResearch(sessionId, grants, question, userContext)
+        } else if (plan.decompose) {
+            createPlannedWork(sessionId, grants, plan.tasks, userContext, question)
+            applySchedule(sessionId)
+        } else {
+            createIndependentResearch(sessionId, grants, question, userContext)
         }
         enterCollection(sessionId)
         pump(sessionId)
@@ -568,6 +589,7 @@ class OrchestrationEngine(
         val session = fresh(sessionId)
         if (SessionState.valueOf(session.state) in SessionTransitions.terminal) return@withLock snapshot(sessionId)
         cancelOpenTasks(sessionId, AssistedTaskState.CANCELLED)
+        discussion.updateStoppingReason(sessionId, "The user stopped the discussion. Unresolved work was cancelled.", clock())
         move(sessionId, SessionState.CANCELLED, "Session cancelled. No further requests will be prepared.")
         snapshot(sessionId)
     }
@@ -599,6 +621,10 @@ class OrchestrationEngine(
             it.accepted && it.actorParticipantId == request.actorParticipantId && it.action == request.action.name &&
                 it.targetId == request.targetId && it.body == request.body.trim()
         }
+        val acceptedFollowUps = discussion.protocolActions(session.id).count {
+            it.accepted && it.actorParticipantId == request.actorParticipantId &&
+                it.action == CouncilAction.REQUEST_ADDITIONAL_RESEARCH.name
+        }
         val decision = CouncilProtocol.validate(
             request = request,
             sessionState = session.state,
@@ -608,6 +634,8 @@ class OrchestrationEngine(
             requestsConsumed = session.requestsConsumed,
             duplicate = duplicate,
             recipientFound = request.recipientParticipantId.isNullOrBlank() || people.any { it.id == request.recipientParticipantId },
+            maxDepth = session.delegationDepthLimit,
+            fanOutExceeded = request.action == CouncilAction.REQUEST_ADDITIONAL_RESEARCH && acceptedFollowUps >= session.fanOutLimit,
         )
         discussion.insertProtocol(
             com.airachabanda.app.persistence.ProtocolActionEntity(
@@ -765,7 +793,8 @@ class OrchestrationEngine(
                 fail(sessionId, "The research deadline passed. Open tasks were cancelled. No answer was invented.")
                 return
             }
-            if (!step(session)) return
+            val scheduled = applySchedule(sessionId)
+            if (!step(fresh(sessionId)) && !scheduled) return
         }
     }
 
@@ -775,7 +804,16 @@ class OrchestrationEngine(
             SessionState.PRELIMINARY_ANALYSIS -> openCritiqueOrSynthesis(session)
             SessionState.CRITICAL_REVIEW -> progressWaiting(session, KIND_CRITIQUE, SessionState.CRITICAL_REVIEW)
             SessionState.REBUTTAL -> progressWaiting(session, KIND_REBUTTAL, SessionState.REBUTTAL)
-            SessionState.EVIDENCE_VERIFICATION -> progressWaiting(session, KIND_VERIFICATION, SessionState.EVIDENCE_VERIFICATION)
+            SessionState.EVIDENCE_VERIFICATION -> {
+                if (progressWaiting(session, KIND_VERIFICATION, SessionState.EVIDENCE_VERIFICATION)) return true
+                val verification = council.tasksForSession(session.id).filter { it.kind == KIND_VERIFICATION }
+                val stillOpen = verification.any { it.state in OPEN_TASKS || it.state == AssistedTaskState.QUEUED.name }
+                if (verification.isNotEmpty() && !stillOpen) {
+                    move(session.id, SessionState.REASSESSMENT, "Verification finished. The result is stored separately from the original claims.")
+                    return true
+                }
+                false
+            }
             SessionState.REASSESSMENT -> progressReassessment(session)
             SessionState.SYNTHESIS -> progressWaiting(session, KIND_SYNTHESIS, SessionState.SYNTHESIS)
             else -> false
@@ -801,6 +839,7 @@ class OrchestrationEngine(
                 )
                 true
             }
+            open.isEmpty() && tasks.any { it.state == AssistedTaskState.QUEUED.name } -> false
             open.isEmpty() && tasks.isNotEmpty() && session.state != SessionState.PRELIMINARY_ANALYSIS.name -> {
                 move(session.id, SessionState.PRELIMINARY_ANALYSIS, "Research tasks are complete. No conclusion has been written yet.")
                 true
@@ -827,6 +866,7 @@ class OrchestrationEngine(
             ResearchMode.STANDARD, ResearchMode.DEEP_RESEARCH -> "Critical review is unavailable. No reviewer could be assigned. No objection was invented."
             ResearchMode.CUSTOM -> "Critical review was not requested for this custom session."
         }
+        if (openVerificationIfRequired(fresh(session.id))) return true
         if (roles.any { it.role == ParticipantRole.FINAL_SYNTHESIZER.name }) {
             ensureSynthesisTask(fresh(session.id))
             move(session.id, SessionState.SYNTHESIS, disclosure)
@@ -843,6 +883,7 @@ class OrchestrationEngine(
         KIND_SYNTHESIS -> "synthesis"
         KIND_RESEARCH -> "research task"
         KIND_FOLLOW_UP -> "follow-up"
+        KIND_ANALYSIS -> "analysis"
         else -> "task"
     }
 
@@ -905,6 +946,7 @@ class OrchestrationEngine(
             )
             return true
         }
+        if (openVerificationIfRequired(fresh(session.id))) return true
         if (allRoles(session.id).any { it.role == ParticipantRole.FINAL_SYNTHESIZER.name }) {
             ensureSynthesisTask(fresh(session.id))
             move(
@@ -960,14 +1002,75 @@ class OrchestrationEngine(
         val existing = council.tasksForSession(session.id).any { it.kind == KIND_SYNTHESIS }
         if (existing) return
         val synthesizer = roleParticipant(session.id, ParticipantRole.FINAL_SYNTHESIZER) ?: return
+        val people = discussion.participants(session.id)
+        val claims = discussion.claims(session.id)
+        val objections = discussion.objections(session.id)
+        val evidence = if (claims.isEmpty()) emptyList() else discussion.evidenceFor(claims.map { it.id })
+        val corrections = council.messages(session.conversationId)
+            .filter { it.source == MessageSource.USER.name && it.body != session.question }
+            .map { it.body }
+        val quality = DiscussionQuality.assess(
+            DiscussionQuality.Check(
+                requirementsAddressed = claims.isNotEmpty() || session.question.isNotBlank(),
+                claimsMissingEvidence = claims.isNotEmpty() && evidence.isEmpty(),
+                materialDisagreement = objections.any { it.resolution in UNRESOLVED },
+                mathVerificationRequired = session.verificationRequired,
+                mathVerificationDone = discussion.verifications(session.id).isNotEmpty(),
+                critiqueCompletedOrUnavailable = people.none { person ->
+                    discussion.roles(person.id).any { it.role == ParticipantRole.DEVILS_ADVOCATE.name }
+                } || council.tasksForSession(session.id).any { it.kind == KIND_CRITIQUE && it.state == AssistedTaskState.COMPLETED.name },
+                furtherResearchWouldHelp = false,
+                budgetRemaining = (session.requestBudget - session.requestsConsumed).coerceAtLeast(0),
+            ),
+        )
+        discussion.updateStoppingReason(session.id, quality.note, clock())
         createTask(
             participant = synthesizer,
             role = ParticipantRole.FINAL_SYNTHESIZER,
             kind = KIND_SYNTHESIS,
-            prompt = "Prepare a final synthesis from the recorded claims, objections, rebuttals, and verification results. Keep unresolved objections. Do not invent evidence or a confidence percentage.",
+            prompt = SynthesisBrief.prepare(
+                SynthesisBrief.Input(
+                    objective = session.question,
+                    corrections = corrections,
+                    findings = claims.map { it.statement },
+                    evidence = evidence.map { it.locator },
+                    contradictions = objections.map { it.explanation },
+                    unresolved = objections.filter { it.resolution in UNRESOLVED }.map { it.explanation },
+                    verificationLimits = quality.note,
+                    participants = people.map { person ->
+                        val identity = discussion.modelIdentity(person.id)
+                        "${person.providerId}. Declared ${identity?.userDeclaredModelId ?: ModelIdentity.UNKNOWN}. Verified ${identity?.verifiedModelId ?: ModelIdentity.UNKNOWN}."
+                    },
+                ),
+            ),
             round = session.reviewRound.coerceAtLeast(1),
             targetId = null,
+            objective = "Prepare the final synthesis from stored records.",
+            requiredCapability = RoleAssignment.SYNTHESIS,
+            expectedOutput = "A synthesis that keeps unresolved objections and does not invent evidence.",
         )
+    }
+
+    private suspend fun openVerificationIfRequired(session: ResearchSessionEntity): Boolean {
+        if (!session.verificationRequired) return false
+        if (council.tasksForSession(session.id).any { it.kind == KIND_VERIFICATION }) return false
+        val verifier = roleParticipant(session.id, ParticipantRole.EVIDENCE_VERIFIER) ?: return false
+        createTask(
+            participant = verifier,
+            role = ParticipantRole.EVIDENCE_VERIFIER,
+            kind = KIND_VERIFICATION,
+            prompt = "Check the numeric or explicit verification requirement. Do not invent a source. Record VERIFICATION outcome=INSUFFICIENT_EVIDENCE when no source was supplied.",
+            round = session.reviewRound.coerceAtLeast(1),
+            targetId = null,
+            objective = "Verify the required calculation or explicit verification request.",
+            requiredCapability = RoleAssignment.VERIFICATION,
+            expectedOutput = "A verification result tied to a stored claim, or a statement that the evidence is insufficient.",
+        )
+        val from = SessionState.valueOf(fresh(session.id).state)
+        if (SessionTransitions.permits(from, SessionState.EVIDENCE_VERIFICATION)) {
+            move(session.id, SessionState.EVIDENCE_VERIFICATION, "Verification is required before synthesis. No answer was invented.")
+        }
+        return true
     }
 
     private suspend fun reservedReviewSlots(sessionId: String): Int {
@@ -990,7 +1093,15 @@ class OrchestrationEngine(
         prompt: String,
         round: Int,
         targetId: String?,
-    ) {
+        objective: String = "",
+        parentTaskId: String? = null,
+        requiredCapability: String = "",
+        expectedOutput: String = "",
+        priority: Int = 0,
+        deadlineEpochMs: Long? = null,
+        taskBudget: Int = 0,
+        queued: Boolean = false,
+    ): String {
         val session = fresh(participant.sessionId)
         val automated = participant.participationMode == ParticipationMode.AUTOMATED.name &&
             ZeroCostPolicy.automatedInferenceAllowed(
@@ -998,8 +1109,9 @@ class OrchestrationEngine(
                 BillingEligibility.valueOf(participant.billingEligibility),
             )
         var state = if (automated) AssistedTaskState.READY else AssistedTaskState.AWAITING_USER_RESPONSE
+        if (queued) state = AssistedTaskState.QUEUED
         var markAutomated = false
-        if (participant.participationMode == ParticipationMode.AUTOMATED.name) {
+        if (!queued && participant.participationMode == ParticipationMode.AUTOMATED.name) {
             val ceiling = if (kind == KIND_RESEARCH || kind == KIND_FOLLOW_UP) {
                 (session.requestBudget - reservedReviewSlots(session.id)).coerceAtLeast(0)
             } else {
@@ -1025,9 +1137,10 @@ class OrchestrationEngine(
             }
         }
         val now = clock()
+        val taskId = ids()
         council.insertTask(
             ResearchTaskEntity(
-                id = ids(),
+                id = taskId,
                 sessionId = session.id,
                 conversationId = session.conversationId,
                 providerId = participant.providerId,
@@ -1050,8 +1163,145 @@ class OrchestrationEngine(
                 participantId = participant.id,
                 automated = markAutomated,
                 targetId = targetId,
+                objective = objective.ifBlank { prompt.lineSequence().firstOrNull().orEmpty() },
+                parentTaskId = parentTaskId,
+                requiredCapability = requiredCapability,
+                expectedOutput = expectedOutput,
+                priority = priority,
+                deadlineEpochMs = deadlineEpochMs,
+                taskBudget = taskBudget,
             ),
         )
+        return taskId
+    }
+
+    private suspend fun createIndependentResearch(
+        sessionId: String,
+        grants: List<RoleGrant>,
+        question: String,
+        userContext: List<String>,
+    ) {
+        val researchPrompt = TaskContext.initial(question, userContext)
+        grants.filter { it.role == ParticipantRole.RESEARCHER }.forEach { grant ->
+            val participant = participantFor(sessionId, grant.providerId)
+            createTask(
+                participant = participant,
+                role = ParticipantRole.RESEARCHER,
+                kind = KIND_RESEARCH,
+                prompt = researchPrompt,
+                round = 1,
+                targetId = null,
+                objective = question,
+                requiredCapability = RoleAssignment.RESEARCH,
+                expectedOutput = "An answer to the assigned request without another participant's initial answer.",
+            )
+        }
+    }
+
+    private suspend fun createPlannedWork(
+        sessionId: String,
+        grants: List<RoleGrant>,
+        work: List<DiscussionPlanner.Work>,
+        userContext: List<String>,
+        question: String,
+    ) {
+        val researchers = grants.filter { it.role == ParticipantRole.RESEARCHER }
+        val analyst = grants.firstOrNull { it.role == ParticipantRole.ANALYST } ?: researchers.firstOrNull() ?: return
+        val localIds = mutableMapOf<String, String>()
+        work.forEach { item ->
+            val grant = if (item.kind == KIND_ANALYSIS) analyst else researchers[localIds.size % researchers.size.coerceAtLeast(1)]
+            val participant = participantFor(sessionId, grant.providerId)
+            val prompt = if (item.dependsOn.isEmpty()) {
+                TaskContext.initial(item.objective, userContext.filter { !question.contains(it) || it == item.objective })
+            } else {
+                TaskContext.targeted(item.objective, emptyList(), emptyList(), emptyList())
+            }
+            val created = createTask(
+                participant = participant,
+                role = if (item.kind == KIND_ANALYSIS) ParticipantRole.ANALYST else ParticipantRole.RESEARCHER,
+                kind = item.kind,
+                prompt = prompt,
+                round = 1,
+                targetId = null,
+                objective = item.objective,
+                requiredCapability = item.capability,
+                expectedOutput = item.expectedOutput,
+                priority = item.priority,
+                taskBudget = item.budget,
+                queued = true,
+            )
+            localIds[item.localId] = created
+        }
+        work.forEach { item ->
+            val taskId = localIds[item.localId] ?: return@forEach
+            val parentId = item.parentLocalId?.let { localIds[it] }
+            if (parentId != null) council.updateTaskParent(taskId, parentId)
+            item.dependsOn.forEach { dependency ->
+                val dependsOn = localIds[dependency] ?: return@forEach
+                val edges = discussion.dependenciesForSession(sessionId).map { it.taskId to it.dependsOnTaskId }
+                if (!TaskGraph.hasCycle(edges + (taskId to dependsOn))) {
+                    discussion.insertDependency(TaskDependencyEntity(taskId, dependsOn))
+                }
+            }
+        }
+    }
+
+    private suspend fun applySchedule(sessionId: String): Boolean {
+        val session = fresh(sessionId)
+        val tasks = council.tasksForSession(sessionId)
+        val dependencies = discussion.dependenciesForSession(sessionId)
+        val nodes = tasks.map { task ->
+            TaskGraph.Node(
+                id = task.id,
+                state = task.state,
+                automated = task.automated,
+                dependsOn = dependencies.filter { it.taskId == task.id }.map { it.dependsOnTaskId }.toSet(),
+                deadlineEpochMs = task.deadlineEpochMs,
+                priority = task.priority,
+            )
+        }
+        val promotion = TaskGraph.promote(nodes, session.concurrencyLimit, clock())
+        promotion.cancel.forEach { id ->
+            council.updateTaskState(id, AssistedTaskState.CANCELLED.name, clock())
+        }
+        if (promotion.cancel.isNotEmpty()) {
+            discussion.updateStoppingReason(
+                sessionId,
+                "A task was cancelled because its dependency failed or its deadline passed.",
+                clock(),
+            )
+        }
+        val activate = promotion.activateAutomated + promotion.activateAssisted
+        activate.forEach { id ->
+            val task = tasks.first { it.id == id }
+            val upstream = dependencies.filter { it.taskId == id }.map { it.dependsOnTaskId }
+            val claims = discussion.claims(sessionId).filter { claim ->
+                upstream.isEmpty() || tasks.filter { it.id in upstream }.any { it.participantId == claim.authorParticipantId }
+            }.map { it.statement }
+            val assisted = !task.automated
+            val prompt = if (upstream.isEmpty()) {
+                task.prompt
+            } else {
+                val targeted = TaskContext.targeted(task.objective, claims, emptyList(), emptyList())
+                if (assisted) {
+                    AssistedPrompt.frame(
+                        providerName = ProviderRegistry.definition(ProviderId.valueOf(task.providerId)).displayName,
+                        role = task.role.replace('_', ' ').lowercase(),
+                        task = englishTask(task.kind),
+                        body = targeted,
+                    )
+                } else {
+                    targeted
+                }
+            }
+            council.updateTaskContent(
+                id = id,
+                prompt = prompt,
+                state = if (task.automated) AssistedTaskState.READY.name else AssistedTaskState.AWAITING_USER_RESPONSE.name,
+                updatedAt = clock(),
+            )
+        }
+        return promotion.cancel.isNotEmpty() || activate.isNotEmpty()
     }
 
     suspend fun dispatchTask(sessionId: String, taskId: String, apiKey: String, candidate: OpenRouterCandidate): DispatchOutcome = mutex.withLock {
@@ -1207,7 +1457,7 @@ class OrchestrationEngine(
 
     private suspend fun cancelOpenTasks(sessionId: String, state: AssistedTaskState) {
         council.tasksForSession(sessionId)
-            .filter { it.state in OPEN_TASKS }
+            .filter { it.state in OPEN_TASKS || it.state == AssistedTaskState.QUEUED.name }
             .forEach { council.updateTaskState(it.id, state.name, clock()) }
     }
 
@@ -1300,7 +1550,7 @@ class OrchestrationEngine(
         )
         if (invalidateOpenWork) {
             council.tasksForSession(sessionId)
-                .filter { it.state in OPEN_TASKS && it.kind in setOf(KIND_FOLLOW_UP, KIND_RESEARCH) }
+                .filter { (it.state in OPEN_TASKS || it.state == AssistedTaskState.QUEUED.name) && it.kind in setOf(KIND_FOLLOW_UP, KIND_RESEARCH, KIND_ANALYSIS) }
                 .forEach { council.updateTaskState(it.id, AssistedTaskState.CANCELLED.name, now) }
         }
         council.insertEvent(
@@ -1393,12 +1643,13 @@ class OrchestrationEngine(
     private companion object {
         const val KIND_RESEARCH = "RESEARCH"
         const val KIND_FOLLOW_UP = "FOLLOW_UP"
+        const val KIND_ANALYSIS = "ANALYSIS"
         const val KIND_CRITIQUE = "CRITIQUE"
         const val KIND_REBUTTAL = "REBUTTAL"
         const val KIND_VERIFICATION = "VERIFICATION"
         const val KIND_SYNTHESIS = "SYNTHESIS"
         const val MAX_STEPS = 8
-        val COLLECTION_KINDS = setOf(KIND_RESEARCH, KIND_FOLLOW_UP, "ASSISTED_RESEARCH")
+        val COLLECTION_KINDS = setOf(KIND_RESEARCH, KIND_FOLLOW_UP, KIND_ANALYSIS, "ASSISTED_RESEARCH")
         val OPEN_TASKS = setOf(
             AssistedTaskState.PENDING.name,
             AssistedTaskState.READY.name,

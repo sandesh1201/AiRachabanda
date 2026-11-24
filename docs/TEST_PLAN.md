@@ -142,6 +142,15 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - An imported critique creates an objection only when it quotes a stored claim. Two stored claims both appear in the recorded synthesis. No source is invented.
 - A user correction cancels open follow-up work. A cancelled task cannot add a claim. Pause and the recorded request survive a process restart.
 
+## Milestone 006B checks
+
+- A quick question stays one research task. A numbered standard request becomes independent tasks plus one dependent analysis task.
+- A dependency cycle is rejected. A cancelled dependency cancels the task that waits on it.
+- Two assisted tasks can wait at the same time, and a third waits until a slot is free.
+- A request that asks to raise the budget does not change the stored budget. Billing, credential, network, and code-execution intents are denied.
+- Context for an initial task does not include another part. A compressed context keeps the source locator and says it is not the original source.
+- Pause is not required for a cancelled graph to survive a process restart.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

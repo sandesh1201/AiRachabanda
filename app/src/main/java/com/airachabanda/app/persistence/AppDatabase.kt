@@ -95,6 +95,20 @@ data class ResearchSessionEntity(
     val statusNote: String = "",
     @ColumnInfo(defaultValue = "0")
     val reviewRound: Int = 0,
+    @ColumnInfo(defaultValue = "'DETERMINISTIC'")
+    val planSource: String = "DETERMINISTIC",
+    @ColumnInfo(defaultValue = "1")
+    val concurrencyLimit: Int = 1,
+    @ColumnInfo(defaultValue = "2")
+    val delegationDepthLimit: Int = 2,
+    @ColumnInfo(defaultValue = "2")
+    val fanOutLimit: Int = 2,
+    @ColumnInfo(defaultValue = "''")
+    val stoppingReason: String = "",
+    @ColumnInfo(defaultValue = "''")
+    val planNote: String = "",
+    @ColumnInfo(defaultValue = "0")
+    val verificationRequired: Boolean = false,
 )
 
 @Entity(
@@ -127,6 +141,42 @@ data class ResearchTaskEntity(
     @ColumnInfo(defaultValue = "0")
     val automated: Boolean = false,
     val targetId: String? = null,
+    @ColumnInfo(defaultValue = "''")
+    val objective: String = "",
+    val parentTaskId: String? = null,
+    @ColumnInfo(defaultValue = "''")
+    val requiredCapability: String = "",
+    @ColumnInfo(defaultValue = "''")
+    val expectedOutput: String = "",
+    @ColumnInfo(defaultValue = "0")
+    val priority: Int = 0,
+    val deadlineEpochMs: Long? = null,
+    @ColumnInfo(defaultValue = "0")
+    val taskBudget: Int = 0,
+)
+
+@Entity(
+    tableName = "task_dependencies",
+    primaryKeys = ["taskId", "dependsOnTaskId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ResearchTaskEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["taskId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ResearchTaskEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["dependsOnTaskId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("dependsOnTaskId")],
+)
+data class TaskDependencyEntity(
+    val taskId: String,
+    val dependsOnTaskId: String,
 )
 
 @Entity(
@@ -262,6 +312,12 @@ interface CouncilDao {
     @Query("UPDATE research_tasks SET state = :state, updatedAtEpochMs = :updatedAt WHERE id = :id")
     suspend fun updateTaskState(id: String, state: String, updatedAt: Long)
 
+    @Query("UPDATE research_tasks SET prompt = :prompt, state = :state, updatedAtEpochMs = :updatedAt WHERE id = :id")
+    suspend fun updateTaskContent(id: String, prompt: String, state: String, updatedAt: Long)
+
+    @Query("UPDATE research_tasks SET parentTaskId = :parentId WHERE id = :id")
+    suspend fun updateTaskParent(id: String, parentId: String)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertImport(entity: ImportedResponseEntity)
 
@@ -317,8 +373,9 @@ interface CouncilDao {
         RequestBudgetEntryEntity::class,
         ProtocolActionEntity::class,
         ProviderCompletionEntity::class,
+        TaskDependencyEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

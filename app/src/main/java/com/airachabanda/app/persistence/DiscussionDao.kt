@@ -152,4 +152,43 @@ interface DiscussionDao {
             updatedAt = updatedAt,
         )
     }
+
+    @Query(
+        """
+        UPDATE research_sessions
+        SET planSource = :planSource,
+            concurrencyLimit = :concurrencyLimit,
+            delegationDepthLimit = :delegationDepthLimit,
+            fanOutLimit = :fanOutLimit,
+            planNote = :planNote,
+            verificationRequired = :verificationRequired,
+            updatedAtEpochMs = :updatedAt
+        WHERE id = :id
+        """,
+    )
+    suspend fun updatePlan(
+        id: String,
+        planSource: String,
+        concurrencyLimit: Int,
+        delegationDepthLimit: Int,
+        fanOutLimit: Int,
+        planNote: String,
+        verificationRequired: Boolean,
+        updatedAt: Long,
+    )
+
+    @Query("UPDATE research_sessions SET stoppingReason = :reason, updatedAtEpochMs = :updatedAt WHERE id = :id")
+    suspend fun updateStoppingReason(id: String, reason: String, updatedAt: Long)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertDependency(entity: TaskDependencyEntity)
+
+    @Query(
+        """
+        SELECT task_dependencies.* FROM task_dependencies
+        INNER JOIN research_tasks ON research_tasks.id = task_dependencies.taskId
+        WHERE research_tasks.sessionId = :sessionId
+        """,
+    )
+    suspend fun dependenciesForSession(sessionId: String): List<TaskDependencyEntity>
 }

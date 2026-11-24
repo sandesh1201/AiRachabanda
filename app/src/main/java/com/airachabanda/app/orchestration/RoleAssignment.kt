@@ -202,6 +202,7 @@ object SessionTransitions {
         ),
         SessionState.PRELIMINARY_ANALYSIS to setOf(
             SessionState.CRITICAL_REVIEW,
+            SessionState.EVIDENCE_VERIFICATION,
             SessionState.SYNTHESIS,
             SessionState.COMPLETED,
             SessionState.AWAITING_USER_RESPONSE,
@@ -235,6 +236,7 @@ object SessionTransitions {
         ),
         SessionState.REASSESSMENT to setOf(
             SessionState.CRITICAL_REVIEW,
+            SessionState.EVIDENCE_VERIFICATION,
             SessionState.SYNTHESIS,
             SessionState.COMPLETED,
             SessionState.PAUSED,

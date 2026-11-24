@@ -38,7 +38,13 @@ class AppContainer(context: Application) {
         context,
         AppDatabase::class.java,
         "airachabanda.db",
-    ).addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4, Migrations.MIGRATION_4_5)
+    ).addMigrations(
+        Migrations.MIGRATION_1_2,
+        Migrations.MIGRATION_2_3,
+        Migrations.MIGRATION_3_4,
+        Migrations.MIGRATION_4_5,
+        Migrations.MIGRATION_5_6,
+    )
         .build()
 
     val credentialStore: CredentialStore = KeystoreCredentialStore(

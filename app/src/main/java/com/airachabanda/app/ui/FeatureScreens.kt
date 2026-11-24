@@ -239,6 +239,16 @@ fun CouncilScreen(
                 Text("Objections: ${stage?.objectionCount ?: 0}. Unresolved: ${stage?.unresolvedObjections ?: 0}. Rebuttals: ${stage?.rebuttalCount ?: 0}.")
                 Text("Verification: ${stage?.verification ?: "Not started"}.")
                 Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
+                Text("Plan", style = MaterialTheme.typography.titleMedium)
+                Text(stage?.planNote?.ifBlank { "No discussion plan has been recorded." } ?: "No discussion plan has been recorded.")
+                Text("Stopping reason", style = MaterialTheme.typography.titleMedium)
+                Text(stage?.stoppingReason?.ifBlank { "The discussion has not stopped." } ?: "The discussion has not stopped.")
+                Text("Task graph", style = MaterialTheme.typography.titleMedium)
+                if (stage?.taskGraph.isNullOrEmpty()) {
+                    Text("No task has been scheduled.")
+                } else {
+                    stage?.taskGraph.orEmpty().forEach { Text(it) }
+                }
                 Text("AI-to-AI requests", style = MaterialTheme.typography.titleMedium)
                 if (stage?.exchanges.isNullOrEmpty()) {
                     Text("No participant request has been recorded.")
@@ -544,6 +554,7 @@ private fun AssistedTaskState.label(): String = when (this) {
     AssistedTaskState.BLOCKED -> "Blocked"
     AssistedTaskState.CANCELLED -> "Cancelled"
     AssistedTaskState.FAILED -> "Failed"
+    AssistedTaskState.QUEUED -> "Waiting on another task"
 }
 
 @Composable

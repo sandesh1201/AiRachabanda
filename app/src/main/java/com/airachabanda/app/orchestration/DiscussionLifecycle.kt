@@ -22,12 +22,6 @@ object IndependentBrief {
 }
 
 object DiscussionExchange {
-    const val MAX_DEPTH = 2
-
-    private val forbidden = Regex(
-        """(?i)(enable billing|add a payment|ignore the budget|override (billing|security|privacy|permissions)|reveal (the )?(api key|token|credential)|grant (owner|admin))""",
-    )
-
     data class Request(
         val senderFound: Boolean,
         val recipientFound: Boolean,
@@ -47,15 +41,12 @@ object DiscussionExchange {
 
     data class Decision(val accepted: Boolean, val reason: String)
 
-    fun forbidden(body: String): Boolean = forbidden.containsMatchIn(body)
-
-    fun validate(request: Request): Decision {
+    fun validate(request: Request, maxDepth: Int = 2): Decision {
         val reason = when {
             !request.sessionAccepting -> "The session is not accepting delegation."
             !request.senderFound -> "The sender is not a participant in this session."
             request.body.isBlank() -> "The delegation needs text supplied by the caller."
-            forbidden(request.body) -> "The request tried to override billing, security, privacy, or the request budget. It was rejected."
-            request.depth > MAX_DEPTH -> "Recursive delegation was rejected."
+            request.depth > maxDepth -> "Recursive delegation was rejected."
             request.duplicate -> "This request repeats an open delegation."
             request.purpose.isBlank() -> "The delegation needs a purpose."
             request.expectedOutput.isBlank() -> "The delegation needs an expected output."

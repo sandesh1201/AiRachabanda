@@ -19,6 +19,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 005F: Gemini consent and the single free-tier request are prepared. They stay unsent until the owner registers an Android OAuth client and a looked-up project has billing disabled. Local traffic uses adb reverse. Cleartext stays off.
 - Milestone 005G: Android AuthorizationClient can obtain a read-only token. Metadata and one free-tier generation run only after in-app confirmation, key binding, and billingEnabled false. No live response has been received until the owner finishes Google configuration.
 - Milestone 006A: The Council can run an assisted discussion from stored responses. Participant requests, objections, and the recorded synthesis do not contact a provider.
+- Milestone 006B: Discussion planning, task dependencies, and parallel assisted work are recorded on the device. No live provider request is added.
 
 ## Next
 

@@ -202,6 +202,7 @@ class CouncilRepository(
             AssistedTaskState.BLOCKED,
             AssistedTaskState.CANCELLED,
             AssistedTaskState.FAILED,
+            AssistedTaskState.QUEUED,
             -> "The $name task is ${state.name}. No response was invented."
         }
         dao.insertEvent(

@@ -59,6 +59,8 @@ object CouncilProtocol {
         requestsConsumed: Int,
         duplicate: Boolean = false,
         recipientFound: Boolean = true,
+        maxDepth: Int = 2,
+        fanOutExceeded: Boolean = false,
     ): ProtocolDecision {
         val state = runCatching { SessionState.valueOf(sessionState) }.getOrNull()
         if (state == null || state in SessionTransitions.terminal || state == SessionState.PAUSED) {
@@ -66,13 +68,16 @@ object CouncilProtocol {
         }
         if (!actorFound) return ProtocolDecision(false, "The actor is not a participant in this session.")
         if (request.body.isBlank()) return ProtocolDecision(false, "The action needs text supplied by the caller.")
-        if (DiscussionExchange.forbidden(request.body)) {
-            return ProtocolDecision(false, "The request tried to override billing, security, privacy, or the request budget. It was rejected.")
+        if (!ExecutionGate.allow(ExecutionIntent.RAISE_BUDGET) && request.requestedRequests > requestBudget) {
+            return ProtocolDecision(false, "The request tried to raise the budget. The budget was not increased.")
         }
-        if (request.depth > DiscussionExchange.MAX_DEPTH) {
+        if (request.depth > maxDepth) {
             return ProtocolDecision(false, "Recursive delegation was rejected.")
         }
         if (duplicate) return ProtocolDecision(false, "This request repeats an open delegation.")
+        if (fanOutExceeded) {
+            return ProtocolDecision(false, "The delegation fan-out limit for this discussion mode has been reached.")
+        }
         if (!request.recipientParticipantId.isNullOrBlank() && !recipientFound) {
             return ProtocolDecision(false, "The recipient is not a participant in this session.")
         }

@@ -275,4 +275,34 @@ object Migrations {
             db.execSQL("ALTER TABLE `provider_completions` ADD COLUMN `disposition` TEXT NOT NULL DEFAULT 'COMPLETED'")
         }
     }
+
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `planSource` TEXT NOT NULL DEFAULT 'DETERMINISTIC'")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `concurrencyLimit` INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `delegationDepthLimit` INTEGER NOT NULL DEFAULT 2")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `fanOutLimit` INTEGER NOT NULL DEFAULT 2")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `stoppingReason` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `planNote` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `research_sessions` ADD COLUMN `verificationRequired` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `objective` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `parentTaskId` TEXT")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `requiredCapability` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `expectedOutput` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `priority` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `deadlineEpochMs` INTEGER")
+            db.execSQL("ALTER TABLE `research_tasks` ADD COLUMN `taskBudget` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `task_dependencies` (
+                `taskId` TEXT NOT NULL,
+                `dependsOnTaskId` TEXT NOT NULL,
+                PRIMARY KEY(`taskId`, `dependsOnTaskId`),
+                FOREIGN KEY(`taskId`) REFERENCES `research_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`dependsOnTaskId`) REFERENCES `research_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_dependencies_dependsOnTaskId` ON `task_dependencies` (`dependsOnTaskId`)")
+        }
+    }
 }

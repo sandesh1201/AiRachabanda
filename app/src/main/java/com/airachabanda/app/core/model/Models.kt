@@ -69,6 +69,7 @@ enum class AssistedTaskState {
     BLOCKED,
     CANCELLED,
     FAILED,
+    QUEUED,
 }
 
 enum class MessageSource {

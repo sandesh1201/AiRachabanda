@@ -36,6 +36,9 @@ data class CouncilStage(
     val reviewDisclosure: String = "Reviewer independence has not been assessed.",
     val exchanges: List<String> = emptyList(),
     val recordedSynthesis: String = "",
+    val planNote: String = "",
+    val stoppingReason: String = "",
+    val taskGraph: List<String> = emptyList(),
 )
 
 class CouncilWorkflow(
@@ -84,6 +87,7 @@ class CouncilWorkflow(
         val review = reviewAssessment(people)
         val claims = discussion.claims(session.id)
         val evidence = if (claims.isEmpty()) emptyList() else discussion.evidenceFor(claims.map { it.id })
+        val dependencies = discussion.dependenciesForSession(session.id)
         val exchanges = discussion.protocolActions(session.id).map { action ->
             val outcome = if (action.accepted) "accepted" else "rejected"
             "${action.action} $outcome. ${action.reason}"
@@ -139,6 +143,14 @@ class CouncilWorkflow(
             reviewDisclosure = review.disclosure,
             exchanges = exchanges,
             recordedSynthesis = synthesis,
+            planNote = session.planNote,
+            stoppingReason = session.stoppingReason,
+            taskGraph = tasks.map { task ->
+                val waiting = dependencies.count { it.taskId == task.id }
+                val dependency = if (waiting == 0) "no waiting dependency" else "depends on $waiting task(s)"
+                val objective = task.objective.ifBlank { "No separate objective was stored." }
+                "${task.kind} ${task.state}. $dependency. Assigned to ${task.providerId}. $objective"
+            },
         )
     }
 
@@ -397,6 +409,7 @@ class CouncilWorkflow(
             AssistedTaskState.RUNNING.name,
             AssistedTaskState.AWAITING_USER_RESPONSE.name,
             AssistedTaskState.DEFERRED.name,
+            AssistedTaskState.QUEUED.name,
         )
         val UNRESOLVED = setOf(
             ResolutionStatus.OPEN.name,
