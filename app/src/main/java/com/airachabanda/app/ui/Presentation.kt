@@ -29,38 +29,61 @@ object ModeGuide {
 }
 
 object ProviderPresentation {
-    fun status(config: ProviderConfig, enabled: Boolean = true, quotaExhausted: Boolean = false): String {
+    fun status(
+        config: ProviderConfig,
+        enabled: Boolean = true,
+        quotaExhausted: Boolean = false,
+        credentialStored: Boolean = false,
+        authenticationRequired: Boolean = false,
+    ): String {
         if (!enabled && config.participationMode == ParticipationMode.ASSISTED) return "Disabled"
         if (quotaExhausted) return "Free quota exhausted"
         val labels = ProviderAccess.profile(config.providerId).labels
+        val verified = config.billingEligibility == BillingEligibility.VERIFIED_FREE ||
+            config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
         if (config.billingEligibility == BillingEligibility.PAID || config.billingEligibility == BillingEligibility.BLOCKED) {
-            return "Billing eligibility blocked"
+            return "Billing blocked"
         }
-        if (AccessLabel.CONFIGURATION_REQUIRED in labels && config.accountChoice == AccountChoice.NOT_CONFIGURED) {
-            return "Setup required"
+        val modes = ProviderAccess.profile(config.providerId).modes
+        if (verified && config.automatedInferenceEnabled && ProviderAccessMode.FREE_AUTOMATED_API in modes) {
+            return "Ready for automated participation"
         }
-        if (AccessLabel.BILLING_VERIFICATION_REQUIRED in labels &&
-            config.billingEligibility != BillingEligibility.VERIFIED_FREE &&
-            config.billingEligibility != BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED &&
-            AccessLabel.FREE_CHAT !in labels
-        ) {
-            return "Verification required"
+        if (verified) return "Free eligibility verified"
+        val configured = credentialStored || config.accountChoice != AccountChoice.NOT_CONFIGURED
+        if (!configured) {
+            if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
+            if (AccessLabel.CONFIGURATION_REQUIRED in labels || AccessLabel.BILLING_VERIFICATION_REQUIRED in labels) {
+                return "Not configured"
+            }
+        } else {
+            if (authenticationRequired) return "Authentication required"
+            if (AccessLabel.BILLING_VERIFICATION_REQUIRED in labels && AccessLabel.FREE_CHAT !in labels) {
+                return "Verification required"
+            }
+            return "Credential stored"
         }
-        if (AccessLabel.FREE_CHAT in labels) return "Assisted chat"
+        if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
         if (config.participationMode == ParticipationMode.UNAVAILABLE || AccessLabel.UNAVAILABLE in labels) {
             return "Temporarily unavailable"
         }
-        if (AccessLabel.LOCAL_INFERENCE in labels) return "Local inference"
-        val modes = ProviderAccess.profile(config.providerId).modes
-        if (ProviderAccessMode.FREE_AUTOMATED_API in modes &&
-            config.automatedInferenceEnabled &&
-            ProviderAccessMode.FREE_ASSISTED_CHAT !in modes
-        ) {
-            return "Available"
-        }
-        if (AccessLabel.FREE_CHAT in labels || ProviderAccessMode.FREE_ASSISTED_CHAT in modes) return "Assisted chat"
-        if (config.accountChoice == AccountChoice.NOT_CONFIGURED) return "Setup required"
-        return "Assisted chat"
+        if (AccessLabel.LOCAL_INFERENCE in labels) return "Not configured"
+        if (config.accountChoice == AccountChoice.NOT_CONFIGURED) return "Not configured"
+        return "Assisted chat available"
+    }
+
+    fun blocker(status: String): String = when (status) {
+        "Disabled" -> "This participant is turned off for new discussions."
+        "Free quota exhausted" -> "The free allowance is used up. This app does not buy more and does not switch to a paid request."
+        "Billing blocked" -> "A charge remains possible, so automated access stays off."
+        "Authentication required" -> "Official authorization is not complete. No metadata or inference request was sent."
+        "Ready for automated participation" -> "Free eligibility is verified and automated participation is enabled. Paid fallback stays off."
+        "Free eligibility verified" -> "Free eligibility is recorded. Automated participation stays off until it is enabled for this provider."
+        "Credential stored" -> "A credential is stored in Android Keystore and is not shown. Billing eligibility is not verified, so inference stays off."
+        "Verification required" -> "The account plan or project billing has not been shown to be free."
+        "Not configured" -> "No credential is stored. Enter it in this app. Do not paste it into a chat."
+        "Assisted chat available" -> "Official free chat is assisted. An imported response is user-supplied and is not an authenticated provider result."
+        "Temporarily unavailable" -> "No verified zero-cost automated path is available."
+        else -> "Automated inference stays off until eligibility is verified."
     }
 
     fun kind(config: ProviderConfig): String {

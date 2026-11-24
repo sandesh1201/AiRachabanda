@@ -28,10 +28,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 012: Material 3 light, dark, and system appearance, a home composer, and the Council as the conversation. Schema version 9 is unchanged. No live inference request is added.
 - Milestone 013: Separate discussion limits, pinned public-research connections, and PDF characters that the embedded font cannot draw are reported. Schema version 9 is unchanged. No live inference request is added. OCR is not installed.
 - Milestone 014: Compact, medium, and expanded layouts follow the window width. A reported separating fold reserves a gap. The supporting pane reads the same discussion. Schema version 9 is unchanged. A physical Galaxy Z Fold 6 was not tested. No live inference request is added.
+- Milestone 015: Provider states name the blocker. Official pages were re-read. No account was created and no live inference request was sent. ChatGPT and Claude stay assisted.
 
 ## Next
 
-Gemini account setup can be finished later. Council work continues with imported responses until a verified free provider is authorized.
+The owner can save a Gemini API key in the app and approve the Google authorization screen. Metadata and the one free-tier question stay behind those in-app confirmations.
 
 ## Later
 

@@ -227,6 +227,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - A control interval that overlaps the hinge gap is rejected by the gap check. An interval beside the gap is accepted.
 - Emulator screenshots at resized windows are window-size simulation. They are not folding-posture tests and they are not physical Galaxy Z Fold 6 tests.
 
+## Milestone 015 checks
+
+- An API provider with no stored credential is Not configured. A stored credential that is not billing-verified is Verification required. Authentication required stays ahead of that when authorization is unfinished.
+- Verified free eligibility without automation enabled is Free eligibility verified. Automation enabled on that eligibility is Ready for automated participation.
+- Gemini inference consent, project binding, and unlinked billing are still required. The gate's permitted decision is a synthetic fixture. It is not a live response.
+- A Cloudflare subscriptions read that does not positively name Workers Free stays blocked. ChatGPT and Claude stay ineligible for automated inference.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

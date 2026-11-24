@@ -212,7 +212,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.14.0. Free chat is assisted. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
+                Text("Version 0.15.0. Free chat is assisted. External account setup is paused until you authorize it inside the app. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
             }
         }
     }
@@ -530,6 +530,7 @@ private fun GeminiGuidedSetup(
         Text("Sign-in uses Google Play services AuthorizationClient for this Android package. There is no client secret in the app. ${InstallIdentity.describe(context)}")
         Text("Lookup is GET https://apikeys.googleapis.com/v2/keys:lookupKey. Billing is GET https://cloudbilling.googleapis.com/v1/projects/{project}/billingInfo for that parent. If the billing project id differs from the lookup parent, the app also reads GET https://cloudresourcemanager.googleapis.com/v1/projects/{project}. billingEnabled must be false.")
         Text("Documented free-tier text models: ${GeminiFreeCatalog.TEXT_MODELS.joinToString(", ")}. ${GeminiFreeCatalog.PROTECTION} ${GeminiFreeCatalog.BILLING_LIMIT}")
+        Text("Account setup is paused until you save a key in this screen and approve the Google authorization screen yourself. Do not paste the key, a password, or a one-time code into Cursor chat. No metadata or inference request is sent from this screen until you confirm it here.")
         Text(if (stored) "An API key is stored in Android Keystore and is not shown again." else "No Gemini API key is stored. Enter it here. Do not paste it into a chat.")
         Text(verification)
         Text(notice)
@@ -657,14 +658,14 @@ private fun ProviderAccessSettings(
     onToggle: (ProviderId, Boolean) -> Unit,
 ) {
     Text("AI Providers", style = MaterialTheme.typography.headlineSmall)
-    Text("A provider is Available only when automated inference is actually enabled. Assisted chat, setup, and verification are separate. Stored credentials are not shown.")
+    Text("Ready for automated participation appears only when free eligibility is verified and automation is enabled. Assisted chat, a stored credential, and verification are separate. Stored credentials are not shown.")
     Text("Zero-cost mode is on. Paid inference is not offered.")
     ProviderId.entries.forEach { id ->
         val profile = ProviderAccess.profile(id)
         val config = providers.firstOrNull { it.providerId == id }
         val canToggle = ProviderAccess.active(id) == com.airachabanda.app.core.model.ParticipationMode.ASSISTED
         val status = if (config == null) {
-            "Setup required"
+            "Not configured"
         } else {
             ProviderPresentation.status(config, enabled = !canToggle || id in enabled)
         }
@@ -672,6 +673,7 @@ private fun ProviderAccessSettings(
             Column(Modifier.weight(1f)) {
                 Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
                 Text(status, style = MaterialTheme.typography.labelLarge)
+                Text(ProviderPresentation.blocker(status), style = MaterialTheme.typography.bodySmall)
                 config?.let { item ->
                     val kind = ProviderPresentation.kind(item)
                     if (kind != status) Text(kind, style = MaterialTheme.typography.bodySmall)
