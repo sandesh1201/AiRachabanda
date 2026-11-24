@@ -38,7 +38,7 @@ Research and follow-up tasks leave one automated request unused for an automated
 
 ## Milestone 004B
 
-`OpenRouterDispatch` can reserve one request and store a completed stream once. Production authorization has metadata and inference off, so `dispatchTask` returns a policy refusal and writes nothing. An incomplete stream, a missing generation id, a cancellation, a timeout, or an unknown outcome is not stored as a finished answer and is not retried. A second insert of the same generation id is a duplicate and does not add another message.
+`OpenRouterDispatch` stores a stream only when its disposition is completed, truncated, or interrupted, and only when a generation id is present. A completed stream can become a message. A truncated or interrupted stream stays in `provider_completions` with that disposition and does not become a claim or a final answer. A second insert of the same generation id is a duplicate and does not consume the request budget again. Cancellation, failure, and an unknown outcome are not retried. Production inference authorization stays off, so `dispatchTask` still returns a policy refusal and writes nothing until a later milestone allows a call. Metadata reads use a separate confirmation and never call the chat endpoint.
 
 Review labels are `SELF_CRITIQUE`, `SAME_MODEL_REVIEW`, `CROSS_MODEL_REVIEW`, and `INDEPENDENCE_UNVERIFIED`. The same participant reviewing its own role is reduced verification. Different hosts of the same verified model are not independent. Unknown or user-declared identity cannot establish independence. Cross-model agreement is not proof.
 

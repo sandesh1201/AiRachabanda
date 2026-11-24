@@ -74,9 +74,22 @@ On the same Pixel 9a guest, with the 0.4.2 debug build installed:
 - The three Android Keystore instrumentation tests ran on this emulator and passed. They used synthetic secrets only.
 - This pass does not call OpenRouter.
 
+## Device checks for Milestone 005A
+
+On the same Pixel 9a guest, with the 0.5.0 debug build installed:
+
+- `wm size` reports physical 1080×2424 and no override.
+- `wm density` reports physical 420 and no override.
+- `display_size_forced` is null.
+- Settings, OpenRouter starts at `NOT_CONFIGURED`.
+- After a synthetic key is saved, the status is `VERIFICATION_REQUIRED` and the key is not shown. Saving it does not send a request.
+- Verify connection opens a confirmation that names GET /api/v1/key and GET /api/v1/models and says no conversation text and no inference are sent. Cancel closes it without a request.
+- Remove credential returns the screen to `NOT_CONFIGURED`.
+- Six instrumentation tests passed, including a Keystore read in a new process and deletion of that synthetic credential.
+
 ## Not yet run
 
-- A live OpenRouter metadata request.
+- A live OpenRouter metadata request. The owner has not confirmed one inside the app.
 - A live inference request.
 - Galaxy Z Fold 6 folded and unfolded.
 - The accuracy benchmark in `docs/architecture/devils-advocate.md`.

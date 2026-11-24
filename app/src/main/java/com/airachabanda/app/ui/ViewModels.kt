@@ -14,6 +14,9 @@ import com.airachabanda.app.core.model.Conversation
 import com.airachabanda.app.core.model.ImportDraft
 import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.provider.openrouter.OpenRouterSnapshot
+import com.airachabanda.app.provider.openrouter.openRouterSnapshot
+import com.airachabanda.app.provider.openrouter.snapshotFromReport
 import com.airachabanda.app.security.CredentialAccess
 import com.airachabanda.app.security.CredentialAccounts
 import com.airachabanda.app.core.model.ResearchMode
@@ -247,7 +250,7 @@ class ImportViewModel(container: AppContainer) : ViewModel() {
     }
 }
 
-class SettingsViewModel(container: AppContainer) : ViewModel() {
+class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     private val preferences = container.preferences
     private val repository = container.repository
     private val credentials = container.credentialStore
@@ -258,16 +261,16 @@ class SettingsViewModel(container: AppContainer) : ViewModel() {
     val maxRounds: StateFlow<Int> = preferences.maxRounds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 3)
     private val credentialRevision = MutableStateFlow(0)
-    val openRouterStored: StateFlow<Boolean> = credentialRevision
+    val openRouterStatus: StateFlow<OpenRouterSnapshot> = credentialRevision
         .flatMapLatest {
             kotlinx.coroutines.flow.flow {
                 val access = credentials.get(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT)
                 val stored = access is CredentialAccess.Available
                 if (access is CredentialAccess.Available) access.secret.fill(0)
-                emit(stored)
+                emit(openRouterSnapshot(stored, container.openRouterStatus.read()))
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), openRouterSnapshot(false, null))
 
     fun setAppearance(mode: AppearanceMode) {
         viewModelScope.launch { preferences.setAppearance(mode) }
@@ -289,16 +292,39 @@ class SettingsViewModel(container: AppContainer) : ViewModel() {
         }
         viewModelScope.launch {
             credentials.put(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT, trimmed.toByteArray(Charsets.UTF_8))
+            container.openRouterStatus.clear()
             credentialRevision.value = credentialRevision.value + 1
-            onResult("The OpenRouter key is stored in Android Keystore. It is not shown again.")
+            onResult("The OpenRouter key is stored in Android Keystore. It is not shown again. No metadata request was sent.")
         }
     }
 
     fun removeOpenRouterKey(onResult: (String) -> Unit) {
         viewModelScope.launch {
             credentials.delete(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT)
+            container.openRouterStatus.clear()
             credentialRevision.value = credentialRevision.value + 1
             onResult("The OpenRouter key was removed from this device.")
+        }
+    }
+
+    fun confirmOpenRouterMetadata(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val access = credentials.get(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT)
+            if (access !is CredentialAccess.Available) {
+                onResult("No OpenRouter credential is stored.")
+                return@launch
+            }
+            val secret = access.secret.copyOf()
+            access.secret.fill(0)
+            try {
+                val report = container.consentedMetadataAdapter().verifyMetadata(secret.toString(Charsets.UTF_8))
+                val stamp = java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString()
+                container.openRouterStatus.write(snapshotFromReport(report, stamp))
+                credentialRevision.value = credentialRevision.value + 1
+                onResult(report.summary)
+            } finally {
+                secret.fill(0)
+            }
         }
     }
 

@@ -6,7 +6,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.airachabanda.app.security.AndroidKeystoreGateway
 import com.airachabanda.app.security.AndroidKeystoreKeySource
 import com.airachabanda.app.security.CredentialAccess
-import com.airachabanda.app.security.CredentialAccounts
 import com.airachabanda.app.security.KeystoreCredentialStore
 import com.airachabanda.app.security.RedactedLog
 import kotlinx.coroutines.runBlocking
@@ -27,7 +26,12 @@ class AndroidKeystoreCredentialTest {
 
     @After
     fun clean() {
-        AndroidKeystoreGateway(directory).deleteAll()
+        val gateway = AndroidKeystoreGateway(directory)
+        listOf(
+            "airachabanda.OPENROUTER.instrumentation",
+            "airachabanda.GROQ.instrumentation-other",
+            "airachabanda.GROQ.instrumentation",
+        ).forEach { gateway.delete(it) }
         directory.deleteRecursively()
     }
 
@@ -35,26 +39,26 @@ class AndroidKeystoreCredentialTest {
     fun keystoreRoundTripReplacementIsolationAndRestart() {
         runBlocking {
         val first = store()
-        first.put("OPENROUTER", CredentialAccounts.DEFAULT, secret)
-        val created = first.get("OPENROUTER", CredentialAccounts.DEFAULT) as CredentialAccess.Available
+        first.put("OPENROUTER", "instrumentation", secret)
+        val created = first.get("OPENROUTER", "instrumentation") as CredentialAccess.Available
         assertTrue(created.secret.contentEquals(secret))
         created.secret.fill(0)
 
         val replaced = "synthetic-keystore-secret-replaced".toByteArray(Charsets.UTF_8)
-        first.put("OPENROUTER", CredentialAccounts.DEFAULT, replaced)
-        val afterReplace = first.get("OPENROUTER", CredentialAccounts.DEFAULT) as CredentialAccess.Available
+        first.put("OPENROUTER", "instrumentation", replaced)
+        val afterReplace = first.get("OPENROUTER", "instrumentation") as CredentialAccess.Available
         assertTrue(afterReplace.secret.contentEquals(replaced))
         afterReplace.secret.fill(0)
 
-        first.put("GROQ", "other-account", other)
-        first.delete("OPENROUTER", CredentialAccounts.DEFAULT)
-        assertTrue(first.get("OPENROUTER", CredentialAccounts.DEFAULT) is CredentialAccess.Missing)
-        val isolated = first.get("GROQ", "other-account") as CredentialAccess.Available
+        first.put("GROQ", "instrumentation-other", other)
+        first.delete("OPENROUTER", "instrumentation")
+        assertTrue(first.get("OPENROUTER", "instrumentation") is CredentialAccess.Missing)
+        val isolated = first.get("GROQ", "instrumentation-other") as CredentialAccess.Available
         assertTrue(isolated.secret.contentEquals(other))
         isolated.secret.fill(0)
 
         val restarted = KeystoreCredentialStore(AndroidKeystoreGateway(directory, AndroidKeystoreKeySource()))
-        val survived = restarted.get("GROQ", "other-account") as CredentialAccess.Available
+        val survived = restarted.get("GROQ", "instrumentation-other") as CredentialAccess.Available
         assertTrue(survived.secret.contentEquals(other))
         survived.secret.fill(0)
         directory.walkTopDown().filter { it.isFile }.forEach { file ->
@@ -69,7 +73,7 @@ class AndroidKeystoreCredentialTest {
     fun corruptedCiphertextAndMissingKeyAreRejected() {
         runBlocking {
         val gateway = AndroidKeystoreGateway(directory, AndroidKeystoreKeySource())
-        val alias = "airachabanda.OPENROUTER.default"
+        val alias = "airachabanda.OPENROUTER.instrumentation"
         gateway.write(alias, secret)
         val file = directory.listFiles()?.single { it.isFile && !it.name.endsWith(".tmp") }
         check(file != null)
@@ -91,11 +95,13 @@ class AndroidKeystoreCredentialTest {
     fun accountDisconnectionDeletesOnlyThatCredential() {
         runBlocking {
         val credentials = store()
-        credentials.put("OPENROUTER", CredentialAccounts.DEFAULT, secret)
-        credentials.put("GROQ", CredentialAccounts.DEFAULT, other)
-        credentials.delete("OPENROUTER", CredentialAccounts.DEFAULT)
-        assertTrue(credentials.get("OPENROUTER", CredentialAccounts.DEFAULT) is CredentialAccess.Missing)
-        assertTrue(credentials.get("GROQ", CredentialAccounts.DEFAULT) is CredentialAccess.Available)
+        credentials.put("OPENROUTER", "instrumentation", secret)
+        credentials.put("GROQ", "instrumentation", other)
+        credentials.delete("OPENROUTER", "instrumentation")
+        assertTrue(credentials.get("OPENROUTER", "instrumentation") is CredentialAccess.Missing)
+        val kept = credentials.get("GROQ", "instrumentation") as CredentialAccess.Available
+        assertTrue(kept.secret.contentEquals(other))
+        kept.secret.fill(0)
         }
     }
 

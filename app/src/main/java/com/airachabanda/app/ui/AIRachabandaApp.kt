@@ -185,7 +185,7 @@ fun AIRachabandaApp(
                     val appearance by model.appearance.collectAsState()
                     val mode by model.researchMode.collectAsState()
                     val rounds by model.maxRounds.collectAsState()
-                    val openRouterStored by model.openRouterStored.collectAsState()
+                    val openRouterStatus by model.openRouterStatus.collectAsState()
                     SettingsDetail(
                         section = entry.arguments?.getString("section").orEmpty(),
                         providers = providers,
@@ -197,9 +197,10 @@ fun AIRachabandaApp(
                         onMaxRounds = model::setMaxRounds,
                         onOpenAccount = { id -> navController.navigate("account/${id.name}") },
                         onDelete = { model.deleteLocalData { notice("Local data deleted.") } },
-                        openRouterStored = openRouterStored,
+                        openRouterStatus = openRouterStatus,
                         onSaveOpenRouter = { secret -> model.saveOpenRouterKey(secret) { message -> notice(message) } },
                         onRemoveOpenRouter = { model.removeOpenRouterKey { message -> notice(message) } },
+                        onConfirmOpenRouterMetadata = { model.confirmOpenRouterMetadata { message -> notice(message) } },
                         contentPadding = padding,
                     )
                 }

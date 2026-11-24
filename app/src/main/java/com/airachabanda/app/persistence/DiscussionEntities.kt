@@ -324,4 +324,6 @@ data class ProviderCompletionEntity(
     val body: String,
     val complete: Boolean,
     val createdAtEpochMs: Long,
+    @androidx.room.ColumnInfo(defaultValue = "'COMPLETED'")
+    val disposition: String = "COMPLETED",
 )

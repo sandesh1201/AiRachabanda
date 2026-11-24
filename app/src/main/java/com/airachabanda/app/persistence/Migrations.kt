@@ -269,4 +269,10 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_provider_completions_taskId` ON `provider_completions` (`taskId`)")
         }
     }
+
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `provider_completions` ADD COLUMN `disposition` TEXT NOT NULL DEFAULT 'COMPLETED'")
+        }
+    }
 }

@@ -318,7 +318,7 @@ interface CouncilDao {
         ProtocolActionEntity::class,
         ProviderCompletionEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

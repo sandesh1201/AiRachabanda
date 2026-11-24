@@ -22,7 +22,10 @@ import com.airachabanda.app.provider.openrouter.OpenRouterAdapter
 import com.airachabanda.app.provider.openrouter.OpenRouterAuthorization
 import com.airachabanda.app.provider.openrouter.OpenRouterCandidate
 import com.airachabanda.app.provider.openrouter.OpenRouterDispatch
+import com.airachabanda.app.provider.openrouter.ConnectionState
+import com.airachabanda.app.provider.openrouter.OpenRouterEndpoints
 import com.airachabanda.app.provider.openrouter.OpenRouterFailure
+import com.airachabanda.app.provider.openrouter.ResponseDisposition
 import com.airachabanda.app.security.RedactedLog
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -52,16 +55,18 @@ class OpenRouterAdapterTest {
         val body = outcome.request?.body.orEmpty()
         assertTrue(body.contains("\"stream\":true"))
         assertFalse(body.contains("\"models\""))
-        assertFalse(body.contains("plugins"))
         assertFalse(body.contains("\"tools\""))
         assertTrue(body.contains("\"allow_fallbacks\":false"))
+        assertTrue(body.contains("\"enabled\":false"))
+        assertTrue(body.contains("\"id\":\"web\""))
+        assertFalse(body.contains("\"tools\""))
         assertFalse(outcome.request?.headers?.get("Authorization")?.let { body.contains(it) } ?: false)
     }
 
     @Test
     fun rejectsPaidUnknownPricingFallbacksAndMissingQuota() {
         val adapter = OpenRouterAdapter(transport = { error("transport") })
-        assertTrue(adapter.assess(freeCandidate(modelId = "openai/gpt-4o")).reason.contains("paid"))
+        assertTrue(adapter.assess(freeCandidate(modelId = "openrouter/free")).reason.contains("routing"))
         assertTrue(adapter.assess(freeCandidate(pricing = null)).reason.contains("Unknown pricing"))
         assertTrue(adapter.assess(freeCandidate(pricing = mapOf("prompt" to "0", "completion" to "0.0001"))).reason.contains("non-zero"))
         assertTrue(adapter.assess(freeCandidate(fallbacks = listOf("openai/gpt-4o"))).reason.contains("Fallback"))
@@ -76,12 +81,20 @@ class OpenRouterAdapterTest {
         val adapter = OpenRouterAdapter(transport = { error("transport") })
         val complete = adapter.parseStream(stream(done = true))
         assertTrue(complete.completed)
+        assertEquals(ResponseDisposition.COMPLETED, complete.disposition)
         assertEquals("gen-test", complete.generationId)
         assertEquals("example/vendor-model:free", complete.modelId)
         assertEquals("Hello", complete.text)
         val partial = adapter.parseStream(stream(done = false))
         assertFalse(partial.completed)
-        assertEquals(OpenRouterFailure.INCOMPLETE, partial.failure)
+        assertEquals(ResponseDisposition.INTERRUPTED, partial.disposition)
+        val truncated = adapter.parseStream(stream(done = true, finish = "length"))
+        assertFalse(truncated.completed)
+        assertEquals(ResponseDisposition.TRUNCATED, truncated.disposition)
+        assertEquals("Hello", truncated.text)
+        assertEquals(ResponseDisposition.OUTCOME_UNKNOWN, adapter.parseStream("").disposition)
+        assertEquals(ResponseDisposition.OUTCOME_UNKNOWN, adapter.classifyFailure(SocketTimeoutException("timed out")).disposition)
+        assertEquals(ResponseDisposition.CANCELLED, adapter.classifyFailure(kotlinx.coroutines.CancellationException("stop")).disposition)
         assertEquals(OpenRouterFailure.MALFORMED, adapter.parseStream("data: {").failure)
         assertEquals(OpenRouterFailure.AUTHENTICATION, adapter.classifyHttp(401, emptyMap()).failure)
         assertEquals(OpenRouterFailure.PAYMENT_REQUIRED, adapter.classifyHttp(402, emptyMap()).failure)
@@ -91,6 +104,7 @@ class OpenRouterAdapterTest {
         assertTrue(limited.reason.contains("No automatic retry"))
         assertEquals(OpenRouterFailure.TIMEOUT, adapter.classifyFailure(SocketTimeoutException("timed out")).failure)
         assertEquals(OpenRouterFailure.CANCELLED, adapter.classifyFailure(kotlinx.coroutines.CancellationException("stop")).failure)
+        assertTrue(adapter.classifyFailure(SocketTimeoutException("timed out")).reason.contains("not retried"))
         val redacted = RedactedLog.redact("authorization: Bearer synthetic-key")
         assertFalse(redacted.contains("synthetic-key"))
     }
@@ -131,11 +145,13 @@ class OpenRouterAdapterTest {
         val second = dispatch.dispatch(command)
         assertEquals(OpenRouterFailure.DUPLICATE, second.failure)
         assertEquals(1, database.councilDao().messages("c1").size)
+        assertEquals(1, database.discussionDao().session("s1")?.requestsConsumed)
         val models = adapter.participantsFor(
             listOf(
-                DiscoveredModel("example/one:free", freePricing, listOf("temperature")),
-                DiscoveredModel("example/two:free", freePricing, listOf("temperature")),
-                DiscoveredModel("openai/gpt-4o", mapOf("prompt" to "0.1", "completion" to "0.1"), emptyList()),
+                DiscoveredModel("example/one:free", freePricing, listOf("temperature"), pricingKnown = true),
+                DiscoveredModel("example/two:free", freePricing, listOf("temperature"), pricingKnown = true),
+                DiscoveredModel("example/missing:free", emptyMap(), emptyList()),
+                DiscoveredModel("openai/gpt-4o", mapOf("prompt" to "0.1", "completion" to "0.1"), emptyList(), pricingKnown = true),
             ),
         )
         assertEquals(listOf("OPENROUTER:example/one:free", "OPENROUTER:example/two:free"), models.map { it.participantKey })
@@ -179,6 +195,92 @@ class OpenRouterAdapterTest {
         database.close()
     }
 
+    @Test
+    fun metadataConsentParsesLimitsAndDoesNotTreatZeroAsEligible() = runBlocking {
+        val calls = AtomicInteger()
+        val blocked = OpenRouterAdapter(transport = { calls.incrementAndGet(); error("transport") })
+        val withheld = blocked.verifyMetadata("synthetic-secret")
+        assertEquals(OpenRouterFailure.POLICY, withheld.failure)
+        assertEquals(0, calls.get())
+        assertEquals(ConnectionState.VERIFICATION_REQUIRED, withheld.state)
+
+        val consented = OpenRouterAdapter(
+            transport = { request ->
+                calls.incrementAndGet()
+                assertTrue(request.url == OpenRouterEndpoints.KEY || request.url == OpenRouterEndpoints.MODELS)
+                assertFalse(request.url == OpenRouterEndpoints.CHAT)
+                when (request.url) {
+                    OpenRouterEndpoints.KEY -> HttpResult(200, emptyMap(), keyBody(limit = "0", remaining = null))
+                    else -> HttpResult(200, emptyMap(), modelCatalog())
+                }
+            },
+            authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
+        )
+        val report = consented.verifyMetadata("synthetic-secret")
+        assertEquals(2, calls.get())
+        assertEquals(ConnectionState.ZERO_COST_ELIGIBILITY_UNVERIFIED, report.state)
+        assertFalse(report.summary.contains("synthetic-secret"))
+        assertTrue(report.remainingQuota.contains("Unknown"))
+        assertEquals(listOf("example/priced-zero"), report.eligibleModels.map { it.id })
+        assertFalse(report.usageLimits.contains("Free-model requests remaining: 50"))
+        val chat = consented.complete("synthetic-secret", freeCandidate(), "Do not send")
+        assertEquals(OpenRouterFailure.POLICY, chat.failure)
+        assertEquals(2, calls.get())
+
+        val unlimited = OpenRouterAdapter(
+            transport = { request ->
+                if (request.url == OpenRouterEndpoints.KEY) HttpResult(200, emptyMap(), keyBody(limit = "null", remaining = "10"))
+                else HttpResult(200, emptyMap(), modelCatalog())
+            },
+            authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
+        ).verifyMetadata("synthetic-secret")
+        assertEquals(ConnectionState.BLOCKED, unlimited.state)
+
+        val rejected = OpenRouterAdapter(
+            transport = { HttpResult(401, emptyMap(), """{"error":{"message":"no"}}""") },
+            authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
+        ).verifyMetadata("synthetic-secret")
+        assertEquals(ConnectionState.AUTHENTICATION_FAILED, rejected.state)
+
+        val limited = OpenRouterAdapter(
+            transport = { HttpResult(429, mapOf("retry-after" to "3"), "") },
+            authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
+        ).verifyMetadata("synthetic-secret")
+        assertEquals(OpenRouterFailure.RATE_LIMIT, limited.failure)
+        assertEquals(ConnectionState.VERIFICATION_REQUIRED, limited.state)
+        assertEquals("Unknown", limited.remainingQuota)
+
+        val offline = OpenRouterAdapter(
+            transport = { throw java.io.IOException("down") },
+            authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
+        ).verifyMetadata("synthetic-secret")
+        assertEquals(ConnectionState.VERIFICATION_REQUIRED, offline.state)
+
+        val proven = OpenRouterAdapter(transport = { error("unused") }).classifyMetadata(
+            com.airachabanda.app.provider.openrouter.KeyObservation(
+                limit = 0.0,
+                limitRemaining = 0.0,
+                limitReset = null,
+                dailyUsed = 1,
+                dailyLimit = 50,
+                dailyRemaining = 4,
+                freeTierFlag = true,
+                usage = 0.0,
+                usageDaily = 0.0,
+                usageWeekly = 0.0,
+                usageMonthly = 0.0,
+                expiresAt = null,
+                managementKey = false,
+                provisioningKey = false,
+                deprecatedRateLimitRequests = null,
+                pluginDefaultsPresent = true,
+            ),
+            listOf(DiscoveredModel("example/priced-zero", freePricing, emptyList(), pricingKnown = true)),
+        )
+        assertEquals(ConnectionState.ZERO_COST_ELIGIBLE, proven.state)
+        assertFalse(OpenRouterAuthorization.PRODUCTION.inferenceAuthorized)
+    }
+
     private fun freeCandidate(
         modelId: String = "example/vendor-model:free",
         pricing: Map<String, String>? = freePricing,
@@ -197,9 +299,25 @@ class OpenRouterAdapterTest {
         sessionBudgetRemaining = budget,
     )
 
-    private fun stream(done: Boolean): String = buildString {
+    private fun stream(done: Boolean, finish: String = "stop"): String = buildString {
         appendLine("""data: {"id":"gen-test","model":"example/vendor-model:free","choices":[{"index":0,"delta":{"content":"Hello"}}]}""")
-        appendLine("""data: {"id":"gen-test","model":"example/vendor-model:free","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}""")
+        appendLine("""data: {"id":"gen-test","model":"example/vendor-model:free","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"$finish"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}""")
         if (done) appendLine("data: [DONE]")
     }
+
+    private fun keyBody(limit: String, remaining: String?): String {
+        val dailyRemaining = if (remaining == null) "null" else remaining
+        return """
+            {"data":{"limit":$limit,"limit_remaining":0,"is_free_tier":false,"free_model_daily_requests":{"limit":50,"remaining":$dailyRemaining,"used":0},"usage":0,"rate_limit":{"requests":1000,"note":"deprecated"}}}
+        """.trimIndent()
+    }
+
+    private fun modelCatalog(): String = """
+        {"data":[
+          {"id":"example/priced-zero","name":"Priced zero","canonical_slug":"example/priced-zero","context_length":8192,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0","request":"0"},"supported_parameters":["temperature"]},
+          {"id":"example/missing:free","name":"Suffix only","pricing":{}},
+          {"id":"example/paid","name":"Paid","pricing":{"prompt":"0.1","completion":"0.2"}},
+          {"id":"openrouter/free","name":"Router","pricing":{"prompt":"0","completion":"0"}}
+        ]}
+    """.trimIndent()
 }

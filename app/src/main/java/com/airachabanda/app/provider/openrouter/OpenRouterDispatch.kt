@@ -7,6 +7,7 @@ import com.airachabanda.app.persistence.CouncilDao
 import com.airachabanda.app.persistence.DiscussionDao
 import com.airachabanda.app.persistence.MessageEntity
 import com.airachabanda.app.persistence.ProviderCompletionEntity
+import com.airachabanda.app.persistence.RequestBudgetEntryEntity
 
 data class DispatchCommand(
     val sessionId: String,
@@ -33,21 +34,25 @@ class OpenRouterDispatch(
 ) {
     suspend fun dispatch(command: DispatchCommand): DispatchOutcome {
         val outcome = adapter.complete(command.apiKey, command.candidate, command.prompt)
-        if (!outcome.completed) {
+        val keep = outcome.disposition == ResponseDisposition.COMPLETED ||
+            outcome.disposition == ResponseDisposition.TRUNCATED ||
+            outcome.disposition == ResponseDisposition.INTERRUPTED
+        if (!keep) {
             return DispatchOutcome(outcome.failure, outcome.reason, completed = false)
         }
         val generationId = outcome.generationId ?: return DispatchOutcome(
             OpenRouterFailure.MALFORMED,
-            "The completed response did not include a generation id. It was not stored.",
+            "The response did not include a generation id. It was not stored as a final answer.",
             completed = false,
         )
         if (discussion.completion(generationId) != null) {
             return DispatchOutcome(
                 OpenRouterFailure.DUPLICATE,
-                "This provider response was already stored. It was not inserted again.",
-                completed = true,
+                "This provider response was already stored. It was not inserted again and the request budget was not consumed again.",
+                completed = outcome.disposition == ResponseDisposition.COMPLETED,
             )
         }
+        val finished = outcome.disposition == ResponseDisposition.COMPLETED && outcome.completed
         val modelId = ModelIdentity.declared(outcome.modelId)
         discussion.insertCompletion(
             ProviderCompletionEntity(
@@ -57,21 +62,39 @@ class OpenRouterDispatch(
                 providerId = ProviderId.OPENROUTER.name,
                 modelId = modelId,
                 body = outcome.text,
-                complete = true,
+                complete = finished,
                 createdAtEpochMs = clock(),
+                disposition = outcome.disposition.name,
             ),
         )
-        council.insertMessage(
-            MessageEntity(
-                id = ids(),
-                conversationId = command.conversationId,
-                providerId = ProviderId.OPENROUTER.name,
-                source = MessageSource.AUTOMATED_PROVIDER.name,
-                body = outcome.text,
-                roundNumber = command.roundNumber,
-                createdAtEpochMs = clock(),
-            ),
-        )
-        return DispatchOutcome(OpenRouterFailure.NONE, outcome.reason, completed = true)
+        if (finished) {
+            council.insertMessage(
+                MessageEntity(
+                    id = ids(),
+                    conversationId = command.conversationId,
+                    providerId = ProviderId.OPENROUTER.name,
+                    source = MessageSource.AUTOMATED_PROVIDER.name,
+                    body = outcome.text,
+                    roundNumber = command.roundNumber,
+                    createdAtEpochMs = clock(),
+                ),
+            )
+        }
+        val session = discussion.session(command.sessionId)
+        if (session != null) {
+            discussion.consumeBudget(
+                RequestBudgetEntryEntity(
+                    id = "budget-$generationId",
+                    sessionId = command.sessionId,
+                    participantId = null,
+                    amount = 1,
+                    reason = "OpenRouter ${outcome.disposition.name}",
+                    createdAtEpochMs = clock(),
+                ),
+                consumed = session.requestsConsumed + 1,
+                updatedAt = clock(),
+            )
+        }
+        return DispatchOutcome(outcome.failure, outcome.reason, completed = finished)
     }
 }

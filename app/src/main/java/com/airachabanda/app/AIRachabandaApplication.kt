@@ -11,6 +11,7 @@ import com.airachabanda.app.persistence.UserPreferences
 import com.airachabanda.app.provider.openrouter.OpenRouterAdapter
 import com.airachabanda.app.provider.openrouter.OpenRouterAuthorization
 import com.airachabanda.app.provider.openrouter.OpenRouterDispatch
+import com.airachabanda.app.provider.openrouter.OpenRouterStatusStore
 import com.airachabanda.app.provider.openrouter.UrlConnectionTransport
 import com.airachabanda.app.security.AndroidKeystoreGateway
 import com.airachabanda.app.security.CredentialStore
@@ -32,7 +33,7 @@ class AppContainer(context: Application) {
         context,
         AppDatabase::class.java,
         "airachabanda.db",
-    ).addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4)
+    ).addMigrations(Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4, Migrations.MIGRATION_4_5)
         .build()
 
     val credentialStore: CredentialStore = KeystoreCredentialStore(
@@ -43,9 +44,15 @@ class AppContainer(context: Application) {
         credentials = credentialStore,
     )
     val preferences: UserPreferences = UserPreferences(context)
+    val openRouterStatus: OpenRouterStatusStore = OpenRouterStatusStore(File(context.filesDir, "openrouter-status.json"))
     val openRouterAdapter: OpenRouterAdapter = OpenRouterAdapter(
         transport = UrlConnectionTransport(),
         authorization = OpenRouterAuthorization.PRODUCTION,
+    )
+
+    fun consentedMetadataAdapter(): OpenRouterAdapter = OpenRouterAdapter(
+        transport = UrlConnectionTransport(),
+        authorization = OpenRouterAuthorization(metadataChecksAuthorized = true, inferenceAuthorized = false),
     )
     val orchestration: OrchestrationEngine = OrchestrationEngine(
         council = database.councilDao(),

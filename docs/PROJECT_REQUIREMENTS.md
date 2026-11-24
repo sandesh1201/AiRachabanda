@@ -1,7 +1,7 @@
 # AI Rachabanda — project requirements
 
 Status: active. These requirements are mandatory for every milestone.
-Source: project owner instructions, the Milestone 002 architecture review, the Milestone 003 implementation decision, the Milestone 003A display correction, the Milestone 004 orchestration decision, the Milestone 004A council connection, and the Milestone 004B OpenRouter preparation.
+Source: project owner instructions through Milestone 005A.
 Last updated: 23 November 2026.
 
 ## Identity
@@ -93,7 +93,9 @@ Milestone 004 keeps the verified Pixel 9a portrait window at 1080×2424 and 420 
 
 Milestone 004A connects the Council screen to `OrchestrationEngine`. Room schema version 3 adds the protocol-action record through a non-destructive migration from version 2. Role assignment also considers provider availability, model identity, known quotas, user selection, discussion progress, remaining budget, and reviewer independence. Standard and Deep Research attempt a critical review before synthesis. A manually imported response is not authenticated. The engine validates untrusted workflow actions before accepting them, and it does not send a provider request.
 
-Milestone 004B adds Android Keystore instrumentation, an OpenRouter adapter that stays fail-closed, and reviewer classifications. Room schema version 4 records provider completions and a capability note. A numeric key limit of zero is not proof that free models can be called. Live metadata and live inference remain unauthorized.
+Milestone 004B adds Android Keystore instrumentation, an OpenRouter adapter that stays fail-closed, and reviewer classifications. Room schema version 4 records provider completions and a capability note. A numeric key limit of zero is not proof that free models can be called.
+
+Milestone 005A distinguishes truncated and interrupted streams from completed answers. Room schema version 5 records that disposition. OpenRouter metadata can be requested only after an in-app confirmation, and only for the key and models endpoints. A stored key and a successful authentication check do not unlock chat completions.
 
 ## Toolchain pin for Milestone 003
 

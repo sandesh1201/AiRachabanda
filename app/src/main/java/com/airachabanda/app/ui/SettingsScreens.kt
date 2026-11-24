@@ -34,6 +34,8 @@ import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.provider.ProviderRegistry
 import com.airachabanda.app.provider.claude.ClaudeAssistedLinks
+import com.airachabanda.app.provider.openrouter.ConnectionState
+import com.airachabanda.app.provider.openrouter.OpenRouterSnapshot
 
 @Composable
 fun SettingsRoot(
@@ -77,9 +79,10 @@ fun SettingsDetail(
     onMaxRounds: (Int) -> Unit,
     onOpenAccount: (ProviderId) -> Unit,
     onDelete: () -> Unit,
-    openRouterStored: Boolean,
+    openRouterStatus: OpenRouterSnapshot,
     onSaveOpenRouter: (String) -> Unit,
     onRemoveOpenRouter: () -> Unit,
+    onConfirmOpenRouterMetadata: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(
@@ -142,12 +145,12 @@ fun SettingsDetail(
                 Text(ClaudeAssistedLinks.STATUS_SUMMARY)
             }
             "storage" -> StorageSettings(onDelete)
-            "openrouter" -> OpenRouterSettings(openRouterStored, onSaveOpenRouter, onRemoveOpenRouter)
+            "openrouter" -> OpenRouterSettings(openRouterStatus, onSaveOpenRouter, onRemoveOpenRouter, onConfirmOpenRouterMetadata)
             else -> {
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.4.2. OpenRouter is prepared and live requests stay off. This build does not send live AI requests.")
+                Text("Version 0.5.0. OpenRouter metadata waits for confirmation in this screen. Chat completions stay off.")
             }
         }
     }
@@ -155,24 +158,31 @@ fun SettingsDetail(
 
 @Composable
 private fun OpenRouterSettings(
-    stored: Boolean,
+    status: OpenRouterSnapshot,
     onSave: (String) -> Unit,
     onRemove: () -> Unit,
+    onConfirmMetadata: () -> Unit,
 ) {
     var key by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    val stored = status.state != ConnectionState.NOT_CONFIGURED
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("OpenRouter", style = MaterialTheme.typography.headlineSmall)
-        Text("Connection status: Not verified. No metadata request has been sent.")
-        Text("Integration status: Prepared and disabled. Automated inference is off.")
-        Text("Billing eligibility: Unverified. Saving a key does not prove a free allowance.")
-        Text("Available models: None discovered. This screen does not use a hardcoded catalog.")
-        Text("Supported capabilities: Text chat is the only prepared capability. Tools, plugins, images, and provider fallbacks are not enabled.")
-        Text("Last verification: Never.")
-        Text("Observed usage limits: Not observed. Provider quotas are not invented.")
-        Text(if (stored) "A credential is stored on this device. The key is not shown." else "No OpenRouter credential is stored.")
+        Text("Connection status: ${status.state.name}")
+        Text(if (stored) "Credential stored: Yes. The key is not shown." else "Credential stored: No.")
+        Text("Authentication status: ${status.authentication}")
+        Text("Metadata verification status: ${status.metadata}")
+        Text("Zero-cost eligibility: ${status.zeroCost}")
+        Text("Last verification: ${status.lastVerification}")
+        Text("Known usage limits: ${status.usageLimits}")
+        Text("Remaining quota: ${status.remainingQuota}")
+        Text("Eligible free models: ${status.models}")
+        Text("Supported capabilities: Text chat is prepared. Tools, plugins, images, and provider fallbacks are not enabled.")
+        Text("Unresolved billing restrictions: ${status.restrictions}")
+        Text("Integration status: Metadata can be checked after confirmation. POST /api/v1/chat/completions is not enabled.")
         OutlinedTextField(
             value = key,
             onValueChange = { key = it },
@@ -189,8 +199,28 @@ private fun OpenRouterSettings(
             enabled = key.isNotBlank(),
         ) { Text("Save credential") }
         Button(onClick = onRemove, enabled = stored) { Text("Remove credential") }
-        Button(onClick = {}, enabled = false) { Text("Verify connection") }
-        Text("Verify connection is disabled. A zero credit limit is not sufficient proof that free models can be called, and live metadata checks are not authorized. Enter the key only in this field.")
+        Button(onClick = { confirm = true }, enabled = stored) { Text("Verify connection") }
+        if (!stored) {
+            Text("Verify connection is available after a key is saved in this field. It does not run when the key is saved.")
+        }
+        if (confirm) {
+            AlertDialog(
+                onDismissRequest = { confirm = false },
+                title = { Text("Check OpenRouter metadata?") },
+                text = {
+                    Text(
+                        "This contacts OpenRouter only. It calls GET https://openrouter.ai/api/v1/key and GET https://openrouter.ai/api/v1/models. The stored API key authenticates those requests and is not shown. No conversation or research prompt is transmitted. No inference is performed. Chat completions stay off.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirm = false
+                        onConfirmMetadata()
+                    }) { Text("Send metadata check") }
+                },
+                dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+            )
+        }
     }
 }
 

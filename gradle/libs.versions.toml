@@ -16,6 +16,7 @@ robolectric = "4.14.1"
 androidxTestCore = "1.6.1"
 androidxJunit = "1.2.1"
 espresso = "3.6.1"
+orchestrator = "1.5.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -45,6 +46,7 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+androidx-test-orchestrator = { module = "androidx.test:orchestrator", version.ref = "orchestrator" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
