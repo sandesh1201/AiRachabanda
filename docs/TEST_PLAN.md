@@ -248,6 +248,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Cloudflare account discovery accepts one fixture account and skips a token that lists two. Auto Select uses the known Gemini free model and rejects an unknown-price id.
 - No live provider call is part of these checks.
 
+## Milestone 015C checks
+
+- A stored credential is not Ready for automated Council participation.
+- A Cloudflare fixture that lists one account and no WORKERS_PAID subscription stays billing-unverified. A WORKERS_PAID fixture stays blocked. No consent means no request.
+- A Groq model-list fixture can verify the key and still leaves the Free plan unverified. A 401 does not verify authentication.
+- These checks use scripted responses. They do not call Groq, Cloudflare, OpenRouter, or Gemini.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

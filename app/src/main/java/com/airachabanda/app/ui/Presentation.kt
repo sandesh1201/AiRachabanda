@@ -127,6 +127,7 @@ object ConnectionPresentation {
         credentialStored: Boolean = false,
         authenticationRequired: Boolean = false,
         connecting: Boolean = false,
+        connectionTested: Boolean = false,
     ): String {
         if (connecting) return CONNECTING
         if (quotaExhausted) return TEMPORARILY_UNAVAILABLE
@@ -138,7 +139,8 @@ object ConnectionPresentation {
             config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
         val assisted = ProviderAccessMode.FREE_ASSISTED_CHAT in modes
         val automated = ProviderAccessMode.FREE_AUTOMATED_API in modes
-        if (verified && config.automatedInferenceEnabled && enabled && automated) return READY
+        if (verified && config.automatedInferenceEnabled && enabled && automated && connectionTested) return READY
+        if (verified && config.automatedInferenceEnabled && enabled && automated) return SETUP_REQUIRED
         if (ProviderAccessMode.LOCAL_INFERENCE in modes) return TEMPORARILY_UNAVAILABLE
         if (authenticationRequired) return SETUP_REQUIRED
         if (automated && credentialStored && !verified) return SETUP_REQUIRED

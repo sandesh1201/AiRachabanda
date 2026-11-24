@@ -40,6 +40,7 @@ import androidx.navigation.navArgument
 import com.airachabanda.app.AIRachabandaApplication
 import com.airachabanda.app.PendingDiscussion
 import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.provider.connect.RuntimeEligibility
 import com.airachabanda.app.core.model.ResearchMode
 import kotlinx.coroutines.launch
 
@@ -279,6 +280,7 @@ fun AIRachabandaApp(
                     val providers by accounts.providers.collectAsState()
                     val enabled by model.enabledParticipants.collectAsState()
                     val stored by model.storedProviders.collectAsState()
+                    val eligibility by model.providerEligibility.collectAsState()
                     val geminiVerification by model.geminiVerification.collectAsState()
                     val id = entry.arguments?.getString("providerId")?.let { runCatching { ProviderId.valueOf(it) }.getOrNull() }
                     val config = providers.firstOrNull { it.providerId == id }
@@ -324,6 +326,16 @@ fun AIRachabandaApp(
                             },
                             onToggle = { on -> model.setParticipantEnabled(id, on) },
                             onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
+                            onRunCheck = { values, done ->
+                                when (id) {
+                                    ProviderId.GROQ -> model.checkGroq(values["api-key"].orEmpty(), done)
+                                    ProviderId.CLOUDFLARE -> model.checkCloudflare(values["api-token"].orEmpty(), done)
+                                    ProviderId.OPENROUTER -> model.checkOpenRouter(values["api-key"].orEmpty(), done)
+                                    else -> done("No automated zero-cost path is available for this provider.")
+                                }
+                            },
+                            onVerifyGemini = { token, done -> model.verifyGemini(token, done) },
+                            eligibility = eligibility[id] ?: RuntimeEligibility(credentialStored = id in stored),
                             contentPadding = padding,
                         )
                     }

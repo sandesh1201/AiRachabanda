@@ -20,6 +20,9 @@ import com.airachabanda.app.core.model.ProviderConfig
 import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.provider.gemini.GeminiOwnerSession
 import com.airachabanda.app.provider.openrouter.OpenRouterSnapshot
+import com.airachabanda.app.provider.cloudflare.CloudflareConnectCheck
+import com.airachabanda.app.provider.connect.RuntimeEligibility
+import com.airachabanda.app.provider.groq.GroqConnectCheck
 import com.airachabanda.app.provider.openrouter.UrlConnectionTransport
 import com.airachabanda.app.provider.openrouter.openRouterSnapshot
 import com.airachabanda.app.provider.openrouter.snapshotFromReport
@@ -456,6 +459,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
     private val credentialRevision = MutableStateFlow(0)
     private val geminiSession = GeminiOwnerSession(UrlConnectionTransport())
+    private val cloudflareCheck = CloudflareConnectCheck(UrlConnectionTransport())
+    private val groqCheck = GroqConnectCheck(UrlConnectionTransport())
+    private val connectReports = MutableStateFlow<Map<ProviderId, RuntimeEligibility>>(emptyMap())
+    val providerEligibility: StateFlow<Map<ProviderId, RuntimeEligibility>> = connectReports
     private var geminiRecord: GeminiOwnerSession.Record? = null
     private var geminiBudget = 1
     private val geminiStatus = MutableStateFlow("No Gemini metadata check has run.")
@@ -561,6 +568,17 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
                 val report = container.consentedMetadataAdapter().verifyMetadata(secret.toString(Charsets.UTF_8))
                 val stamp = java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString()
                 container.openRouterStatus.write(snapshotFromReport(report, stamp))
+                recordEligibility(
+                    ProviderId.OPENROUTER,
+                    RuntimeEligibility(
+                        credentialStored = true,
+                        authenticationVerified = report.credentialValid,
+                        billingVerified = false,
+                        eligibleModelDiscovered = report.eligibleModels.isNotEmpty(),
+                        connectionTested = false,
+                        detail = report.summary,
+                    ),
+                )
                 credentialRevision.value = credentialRevision.value + 1
                 onResult(report.summary)
             } finally {
@@ -629,6 +647,48 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun checkOpenRouter(apiKey: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val trimmed = apiKey.trim()
+            if (trimmed.isNotEmpty()) {
+                credentials.put(ProviderId.OPENROUTER.name, CredentialAccounts.DEFAULT, trimmed.toByteArray(Charsets.UTF_8))
+                container.openRouterStatus.clear()
+                credentialRevision.value = credentialRevision.value + 1
+            }
+            confirmOpenRouterMetadata(onResult)
+        }
+    }
+
+    fun checkGroq(apiKey: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val trimmed = apiKey.trim()
+            if (trimmed.isNotEmpty()) {
+                credentials.put(ProviderId.GROQ.name, CredentialAccounts.DEFAULT, trimmed.toByteArray(Charsets.UTF_8))
+                credentialRevision.value = credentialRevision.value + 1
+            }
+            val report = groqCheck.run(trimmed, consent = true)
+            connectReports.value = connectReports.value + (ProviderId.GROQ to report)
+            onResult(report.detail)
+        }
+    }
+
+    fun checkCloudflare(token: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val trimmed = token.trim()
+            if (trimmed.isNotEmpty()) {
+                credentials.put(ProviderId.CLOUDFLARE.name, CLOUDFLARE_TOKEN, trimmed.toByteArray(Charsets.UTF_8))
+                credentialRevision.value = credentialRevision.value + 1
+            }
+            val report = cloudflareCheck.run(trimmed, consent = true)
+            connectReports.value = connectReports.value + (ProviderId.CLOUDFLARE to report)
+            onResult(report.detail)
+        }
+    }
+
+    fun recordEligibility(providerId: ProviderId, report: RuntimeEligibility) {
+        connectReports.value = connectReports.value + (providerId to report)
+    }
+
     fun removeGroq(onResult: (String) -> Unit) {
         viewModelScope.launch {
             credentials.delete(ProviderId.GROQ.name, CredentialAccounts.DEFAULT)
@@ -657,6 +717,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             val report = geminiSession.verifyMetadata(apiKey, accessToken, metadataConsent = true)
             geminiRecord = report.record
             geminiStatus.value = report.summary
+            val billingOff = report.summary.contains("billingEnabled is false")
+            recordEligibility(
+                ProviderId.GEMINI,
+                RuntimeEligibility(
+                    credentialStored = true,
+                    authenticationVerified = report.record != null,
+                    billingVerified = billingOff,
+                    eligibleModelDiscovered = report.record != null && billingOff,
+                    connectionTested = false,
+                    detail = report.summary,
+                ),
+            )
             onResult(report.summary)
         }
     }

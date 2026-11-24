@@ -22,9 +22,14 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,7 +44,10 @@ import com.airachabanda.app.provider.FreeModelSelection
 import com.airachabanda.app.provider.ProviderRegistry
 import com.airachabanda.app.provider.ProviderSetupCatalog
 import com.airachabanda.app.provider.SetupMethod
+import com.airachabanda.app.provider.connect.RuntimeEligibility
+import com.airachabanda.app.provider.gemini.GeminiAuthOutcome
 import com.airachabanda.app.provider.gemini.InstallIdentity
+import com.airachabanda.app.provider.gemini.PlayServicesGeminiAuthorizer
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -54,6 +62,9 @@ fun ProviderSetupScreen(
     onRemoveSecrets: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onOpenUrl: (String) -> Unit,
+    onRunCheck: (Map<String, String>, (String) -> Unit) -> Unit = { _, done -> done("No automated check was sent.") },
+    onVerifyGemini: (String, (String) -> Unit) -> Unit = { _, done -> done("Gemini billing was not checked.") },
+    eligibility: RuntimeEligibility = RuntimeEligibility(),
     contentPadding: PaddingValues,
 ) {
     val spec = ProviderSetupCatalog.spec(config.providerId)
@@ -75,8 +86,39 @@ fun ProviderSetupScreen(
     var result by rememberSaveable(config.providerId.name) { mutableStateOf("") }
     var confirmConnect by rememberSaveable(config.providerId.name) { mutableStateOf(false) }
     var advanced by rememberSaveable(config.providerId.name) { mutableStateOf(false) }
+    var pendingGemini by rememberSaveable(config.providerId.name) { mutableStateOf(false) }
     var modelChoice by rememberSaveable(config.providerId.name) { mutableStateOf(FreeModelSelection.AUTO) }
     val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    val authorizer = remember(activity) { activity?.let(::PlayServicesGeminiAuthorizer) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { authResult ->
+        authorizer?.onAuthorizationResult(authResult)
+    }
+    LaunchedEffect(credentialStored, pendingGemini) {
+        if (!pendingGemini || !credentialStored || spec.id != ProviderId.GEMINI) return@LaunchedEffect
+        pendingGemini = false
+        val current = authorizer
+        if (current == null) {
+            result = "Google authorization could not start. No lookup was sent."
+            return@LaunchedEffect
+        }
+        connecting = true
+        val outcome = current.authorize { launcher.launch(it) }
+        when (outcome) {
+            GeminiAuthOutcome.Cancelled -> {
+                connecting = false
+                result = "Authorization was cancelled. No lookup was sent."
+            }
+            is GeminiAuthOutcome.Rejected -> {
+                connecting = false
+                result = outcome.detail
+            }
+            is GeminiAuthOutcome.Granted -> onVerifyGemini(outcome.accessToken) { message ->
+                connecting = false
+                result = message
+            }
+        }
+    }
     val connection = ConnectionPresentation.state(
         config,
         enabled = enabled,
@@ -96,6 +138,9 @@ fun ProviderSetupScreen(
         Text(connection, style = MaterialTheme.typography.titleMedium)
         Text(ConnectionPresentation.explanation(connection, spec.id))
         if (result.isNotBlank()) Text(result, style = MaterialTheme.typography.bodyMedium)
+        eligibility.lines().forEach { line ->
+            Text(line, style = MaterialTheme.typography.bodySmall)
+        }
         if (assisted && signIn != null) {
             Button(onClick = { onOpenUrl(signIn.url) }, modifier = Modifier.fillMaxWidth()) { Text("Official sign-in") }
         }
@@ -224,20 +269,44 @@ fun ProviderSetupScreen(
         AlertDialog(
             onDismissRequest = { confirmConnect = false },
             title = { Text("Connect") },
-            text = { Text("Save the key on this device. No paid request is sent. Free access still has to be verified before automated use.") },
+            text = {
+                Text(
+                    when (spec.id) {
+                        ProviderId.GEMINI -> "Connect saves the key, then opens Google's authorization. If you allow it, the app reads the project that owns the key and whether billing is enabled. The test question is not sent."
+                        ProviderId.GROQ -> "Connect saves the key and reads the model list. That response does not show the Free plan, so automated use stays off. No completion is sent."
+                        ProviderId.OPENROUTER -> "Connect saves the key and reads its limits and model prices. A free model name is not enough. No completion is sent."
+                        ProviderId.CLOUDFLARE -> "Connect saves the token, asks which account it can see, and reads subscriptions. A missing paid plan is not Workers Free. No model is run."
+                        else -> "Save the key on this device. No paid request is sent."
+                    },
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     confirmConnect = false
-                    connecting = true
                     val values = spec.fields.associate { field ->
                         val index = spec.fields.indexOf(field)
                         field.key to (if (index == 0) first else second).trim()
                     }
-                    onSaveSecrets(values)
                     first = ""
                     second = ""
-                    connecting = false
-                    result = ConnectionPresentation.explanation(ConnectionPresentation.SETUP_REQUIRED, spec.id)
+                    when (spec.id) {
+                        ProviderId.GEMINI -> {
+                            pendingGemini = true
+                            onSaveSecrets(values)
+                            result = "The key is being saved. Google authorization is next. No test question is sent."
+                        }
+                        ProviderId.GROQ, ProviderId.OPENROUTER, ProviderId.CLOUDFLARE -> {
+                            connecting = true
+                            onRunCheck(values) { message ->
+                                connecting = false
+                                result = message
+                            }
+                        }
+                        else -> {
+                            onSaveSecrets(values)
+                            result = ConnectionPresentation.explanation(ConnectionPresentation.SETUP_REQUIRED, spec.id)
+                        }
+                    }
                 }) { Text("Connect") }
             },
             dismissButton = { TextButton(onClick = { confirmConnect = false }) { Text("Cancel") } },

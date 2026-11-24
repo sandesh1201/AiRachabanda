@@ -31,6 +31,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 015: Provider states name the blocker. Official pages were re-read. No account was created and no live inference request was sent. ChatGPT and Claude stay assisted.
 - Milestone 015A: Provider setup, credential entry, and official links stay inside the app. Automated inference stays behind the existing eligibility gates. No live inference request was sent.
 - Milestone 015B: Provider setup is a key or official sign-in, then Connect. Ready is shown only after the existing free-access checks pass. No live inference request was sent.
+- Milestone 015C: Connect can authenticate and read account, billing, or model metadata where a documented check exists. Ready still requires a completed connection test. No live inference request was sent.
 
 ## Next
 

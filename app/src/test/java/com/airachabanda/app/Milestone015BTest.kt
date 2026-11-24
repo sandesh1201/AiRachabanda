@@ -31,7 +31,11 @@ class Milestone015BTest {
         assertEquals(ConnectionPresentation.NOT_CONNECTED, ConnectionPresentation.state(stored, credentialStored = false))
 
         val ready = config(ProviderId.GROQ, BillingEligibility.VERIFIED_FREE, AccountChoice.FREE_ACCOUNT, automated = true)
-        assertEquals(ConnectionPresentation.READY, ConnectionPresentation.state(ready, enabled = true, credentialStored = true))
+        assertEquals(
+            ConnectionPresentation.READY,
+            ConnectionPresentation.state(ready, enabled = true, credentialStored = true, connectionTested = true),
+        )
+        assertEquals(ConnectionPresentation.SETUP_REQUIRED, ConnectionPresentation.state(ready, enabled = true, credentialStored = true))
         assertEquals(
             ConnectionPresentation.SETUP_REQUIRED,
             ConnectionPresentation.state(ready.copy(automatedInferenceEnabled = false), credentialStored = true),
