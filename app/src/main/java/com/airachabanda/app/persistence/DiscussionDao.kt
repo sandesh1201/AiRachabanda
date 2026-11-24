@@ -122,6 +122,9 @@ interface DiscussionDao {
     @Query("UPDATE objections SET resolution = :resolution WHERE id = :id")
     suspend fun updateObjectionResolution(id: String, resolution: String)
 
+    @Query("UPDATE objections SET resolution = :resolution, requestedVerification = :reason WHERE id = :id")
+    suspend fun updateObjectionStatus(id: String, resolution: String, reason: String)
+
     @Query("SELECT * FROM discussion_rounds WHERE sessionId = :sessionId ORDER BY roundNumber ASC")
     suspend fun rounds(sessionId: String): List<DiscussionRoundEntity>
 

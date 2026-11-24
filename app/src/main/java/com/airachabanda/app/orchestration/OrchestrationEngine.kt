@@ -263,7 +263,11 @@ class OrchestrationEngine(
                     messageId = messageId,
                     authorParticipantId = participantId,
                     roundNumber = task.roundNumber,
-                    statement = text,
+                    statement = ClaimLedger.format(
+                        kind = ClaimLedger.kindFor(text),
+                        taskId = task.id,
+                        body = text,
+                    ),
                     createdAtEpochMs = now,
                 ),
             )
@@ -589,7 +593,20 @@ class OrchestrationEngine(
         val session = fresh(sessionId)
         if (SessionState.valueOf(session.state) in SessionTransitions.terminal) return@withLock snapshot(sessionId)
         cancelOpenTasks(sessionId, AssistedTaskState.CANCELLED)
-        discussion.updateStoppingReason(sessionId, "The user stopped the discussion. Unresolved work was cancelled.", clock())
+        discussion.updateStoppingReason(
+            sessionId,
+            VerificationStop.assess(
+                userStopped = true,
+                deadlineReached = false,
+                budgetExhausted = false,
+                requirementsAddressed = false,
+                materialVerificationStillJustified = false,
+                verifierAvailable = false,
+                insufficientEvidence = false,
+                unresolvedDisagreement = false,
+            ).note,
+            clock(),
+        )
         move(sessionId, SessionState.CANCELLED, "Session cancelled. No further requests will be prepared.")
         snapshot(sessionId)
     }
@@ -1023,7 +1040,26 @@ class OrchestrationEngine(
                 budgetRemaining = (session.requestBudget - session.requestsConsumed).coerceAtLeast(0),
             ),
         )
-        discussion.updateStoppingReason(session.id, quality.note, clock())
+        val verifications = discussion.verifications(session.id)
+        val stop = VerificationStop.assess(
+            userStopped = false,
+            deadlineReached = false,
+            budgetExhausted = false,
+            requirementsAddressed = quality.readyForSynthesis,
+            materialVerificationStillJustified = !quality.readyForSynthesis,
+            verifierAvailable = roleParticipant(session.id, ParticipantRole.EVIDENCE_VERIFIER) != null,
+            insufficientEvidence = verifications.any { it.outcome == com.airachabanda.app.core.model.VerificationOutcome.INSUFFICIENT_EVIDENCE.name } ||
+                objections.any { it.resolution == ResolutionStatus.INSUFFICIENT_EVIDENCE.name },
+            unresolvedDisagreement = objections.any {
+                it.resolution in setOf(
+                    ResolutionStatus.OPEN.name,
+                    ResolutionStatus.UNDER_REVIEW.name,
+                    ResolutionStatus.REBUTTAL_REQUESTED.name,
+                    ResolutionStatus.UNRESOLVED.name,
+                )
+            },
+        )
+        discussion.updateStoppingReason(session.id, stop.note, clock())
         createTask(
             participant = synthesizer,
             role = ParticipantRole.FINAL_SYNTHESIZER,
@@ -1031,12 +1067,15 @@ class OrchestrationEngine(
             prompt = SynthesisBrief.prepare(
                 SynthesisBrief.Input(
                     objective = session.question,
-                    corrections = corrections,
-                    findings = claims.map { it.statement },
+                    corrections = corrections + claims.map { ClaimLedger.parse(it.statement) }.filter { it.corrects.isNotEmpty() }.map { it.body },
+                    findings = claims.map { ClaimLedger.parse(it.statement).body },
                     evidence = evidence.map { it.locator },
                     contradictions = objections.map { it.explanation },
                     unresolved = objections.filter { it.resolution in UNRESOLVED }.map { it.explanation },
-                    verificationLimits = quality.note,
+                    verificationLimits = "${stop.note} ${quality.note}",
+                    verifiedCalculations = verifications.filter { it.outcome == com.airachabanda.app.core.model.VerificationOutcome.SUPPORTED.name }.map { it.note },
+                    assumptions = objections.filter { it.category == com.airachabanda.app.core.model.ObjectionCategory.UNSUPPORTED_ASSUMPTION.name }.map { it.explanation },
+                    alternatives = objections.filter { it.category == com.airachabanda.app.core.model.ObjectionCategory.ALTERNATIVE_EXPLANATION.name }.map { it.explanation },
                     participants = people.map { person ->
                         val identity = discussion.modelIdentity(person.id)
                         "${person.providerId}. Declared ${identity?.userDeclaredModelId ?: ModelIdentity.UNKNOWN}. Verified ${identity?.verifiedModelId ?: ModelIdentity.UNKNOWN}."
@@ -1573,6 +1612,39 @@ class OrchestrationEngine(
     private suspend fun recordStructuredNotes(sessionId: String, task: ResearchTaskEntity, text: String) {
         val claims = discussion.claims(sessionId).map { it.id to it.statement }
         val now = clock()
+        val recorded = discussion.claims(sessionId).lastOrNull { it.authorParticipantId == task.participantId }
+        val math = LocalMath.check(ClaimLedger.parse(recorded?.statement ?: text).body)
+        val verifier = task.participantId
+        if (recorded != null && verifier != null && (math.status == LocalMath.Status.VERIFIED || math.status == LocalMath.Status.CONTRADICTED)) {
+            discussion.insertVerification(
+                VerificationResultEntity(
+                    id = ids(),
+                    sessionId = sessionId,
+                    targetClaimId = recorded.id,
+                    objectionId = null,
+                    verifierParticipantId = verifier,
+                    outcome = if (math.status == LocalMath.Status.VERIFIED) {
+                        com.airachabanda.app.core.model.VerificationOutcome.SUPPORTED.name
+                    } else {
+                        com.airachabanda.app.core.model.VerificationOutcome.CONTRADICTED.name
+                    },
+                    note = math.reason,
+                    createdAtEpochMs = now,
+                ),
+            )
+        }
+        val locator = Regex("""https?://\S+""").find(text)?.value?.trimEnd('.', ',', ')')
+        if (recorded != null && locator != null) {
+            discussion.insertEvidence(
+                EvidenceReferenceEntity(
+                    id = ids(),
+                    claimId = recorded.id,
+                    locator = locator,
+                    note = EvidenceNotes.format(EvidenceNotes.citation(locator)),
+                    createdAtEpochMs = now,
+                ),
+            )
+        }
         if (task.kind == KIND_CRITIQUE) {
             ObjectionExtractor.extract(text).forEach { found ->
                 val claimId = ObjectionExtractor.matchingClaim(found.claimFragment, claims) ?: return@forEach
@@ -1629,6 +1701,109 @@ class OrchestrationEngine(
         }
     }
 
+    suspend fun correctClaim(sessionId: String, claimId: String, replacement: String): SessionSnapshot = mutex.withLock {
+        val original = discussion.claims(sessionId).firstOrNull { it.id == claimId } ?: return@withLock snapshot(sessionId)
+        val parsed = ClaimLedger.parse(original.statement)
+        val now = clock()
+        discussion.insertClaim(
+            ClaimEntity(
+                id = ids(),
+                sessionId = sessionId,
+                messageId = null,
+                authorParticipantId = original.authorParticipantId,
+                roundNumber = original.roundNumber,
+                statement = ClaimLedger.format(
+                    kind = ClaimLedger.kindFor(replacement),
+                    taskId = parsed.taskId,
+                    body = replacement,
+                    corrects = original.id,
+                ),
+                createdAtEpochMs = now,
+            ),
+        )
+        val dependents = CorrectionPropagation.dependentIds(
+            discussion.claims(sessionId).map { it.id to it.statement },
+            original.id,
+        )
+        discussion.insertConclusion(
+            ConclusionEntity(
+                id = ids(),
+                sessionId = sessionId,
+                kind = ConclusionKind.PRELIMINARY.name,
+                body = "Reassessment required. Claim ${original.id} was corrected. The original statement was preserved. Dependent claims: ${dependents.joinToString().ifBlank { "none" }}. Earlier final answers recorded before this correction are not the current answer.",
+                roundNumber = original.roundNumber,
+                createdAtEpochMs = now,
+            ),
+        )
+        council.tasksForSession(sessionId)
+            .filter { it.targetId == claimId && (it.state in OPEN_TASKS || it.state == AssistedTaskState.QUEUED.name) }
+            .forEach { task -> council.updateTaskState(task.id, AssistedTaskState.CANCELLED.name, now) }
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = fresh(sessionId).conversationId,
+                providerId = null,
+                type = "CLAIM_CORRECTED",
+                summary = "A material claim was corrected. Dependent work was marked for reassessment.",
+                createdAtEpochMs = now,
+            ),
+        )
+        snapshot(sessionId)
+    }
+
+    suspend fun transitionObjection(
+        sessionId: String,
+        objectionId: String,
+        to: ResolutionStatus,
+        reason: String,
+    ): SessionSnapshot = mutex.withLock {
+        val objection = discussion.objections(sessionId).firstOrNull { it.id == objectionId } ?: return@withLock snapshot(sessionId)
+        val from = runCatching { ResolutionStatus.valueOf(objection.resolution) }.getOrDefault(ResolutionStatus.OPEN)
+        val decision = ObjectionLifecycle.transition(from, to, reason)
+        if (!decision.accepted) return@withLock snapshot(sessionId)
+        discussion.updateObjectionStatus(objectionId, to.name, decision.reason)
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = fresh(sessionId).conversationId,
+                providerId = null,
+                type = "OBJECTION_STATUS",
+                summary = decision.reason,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        snapshot(sessionId)
+    }
+
+    suspend fun recordContradictoryEvidence(sessionId: String, claimId: String, excerpt: String): SessionSnapshot = mutex.withLock {
+        val claim = discussion.claims(sessionId).firstOrNull { it.id == claimId } ?: return@withLock snapshot(sessionId)
+        val now = clock()
+        discussion.insertEvidence(
+            EvidenceReferenceEntity(
+                id = ids(),
+                claimId = claim.id,
+                locator = "contradictory-record",
+                note = EvidenceNotes.format(EvidenceNotes.contradictory(excerpt)),
+                createdAtEpochMs = now,
+            ),
+        )
+        discussion.objections(sessionId)
+            .filter {
+                it.targetClaimId == claimId && it.resolution in setOf(
+                    ResolutionStatus.CORRECTED.name,
+                    ResolutionStatus.REBUTTED_WITH_EVIDENCE.name,
+                    ResolutionStatus.UNRESOLVED.name,
+                    ResolutionStatus.INSUFFICIENT_EVIDENCE.name,
+                )
+            }
+            .forEach { objection ->
+                val from = runCatching { ResolutionStatus.valueOf(objection.resolution) }.getOrDefault(ResolutionStatus.OPEN)
+                val decision = ObjectionLifecycle.transition(from, ResolutionStatus.OPEN, "New contradictory evidence was recorded.")
+                if (decision.accepted) discussion.updateObjectionStatus(objection.id, ResolutionStatus.OPEN.name, decision.reason)
+            }
+        snapshot(sessionId)
+    }
+
     private suspend fun snapshot(sessionId: String): SessionSnapshot {
         val session = fresh(sessionId)
         return SessionSnapshot(
@@ -1659,6 +1834,8 @@ class OrchestrationEngine(
         )
         val UNRESOLVED = setOf(
             ResolutionStatus.OPEN.name,
+            ResolutionStatus.UNDER_REVIEW.name,
+            ResolutionStatus.REBUTTAL_REQUESTED.name,
             ResolutionStatus.UNRESOLVED.name,
             ResolutionStatus.INSUFFICIENT_EVIDENCE.name,
         )

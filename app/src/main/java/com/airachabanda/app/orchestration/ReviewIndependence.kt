@@ -57,6 +57,9 @@ object ReviewIndependence {
             ReviewClassification.CROSS_MODEL_REVIEW ->
                 "Review classification: CROSS_MODEL_REVIEW. The verified model identities differ. Cross-model agreement is not proof."
         }
-        return ReviewAssessment(classification, disclosure)
+        return ReviewAssessment(
+            classification,
+            "$disclosure Majority agreement is not proof. Multiple models citing the same source are not multiple independent sources.",
+        )
     }
 }

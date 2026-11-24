@@ -330,18 +330,27 @@ object SynthesisBrief {
         val unresolved: List<String>,
         val verificationLimits: String,
         val participants: List<String>,
+        val verifiedCalculations: List<String> = emptyList(),
+        val assumptions: List<String> = emptyList(),
+        val alternatives: List<String> = emptyList(),
     )
 
     fun prepare(input: Input): String = buildString {
         appendLine("Synthesis input for an eligible participant. This text is not the final answer.")
-        appendLine("Original user objective:")
+        appendLine("Direct answer requirements:")
         appendLine(input.objective.trim().ifBlank { "No objective was stored." })
-        appendLine("User corrections:")
-        appendItems(input.corrections, "No user correction was stored.")
-        appendLine("Participant findings:")
+        appendLine("Supported findings:")
         appendItems(input.findings, "No finding was stored.")
-        appendLine("Supporting evidence:")
+        appendLine("Verified calculations:")
+        appendItems(input.verifiedCalculations, "No calculation was verified.")
+        appendLine("Evidence references:")
         appendItems(input.evidence, "No source was recorded.")
+        appendLine("Confirmed corrections:")
+        appendItems(input.corrections, "No correction was stored.")
+        appendLine("Material assumptions:")
+        appendItems(input.assumptions, "No assumption was recorded.")
+        appendLine("Alternative interpretations:")
+        appendItems(input.alternatives, "No alternative was recorded.")
         appendLine("Contradictions:")
         appendItems(input.contradictions, "No contradiction was stored.")
         appendLine("Unresolved objections:")

@@ -256,6 +256,14 @@ fun CouncilScreen(
                     stage?.exchanges.orEmpty().forEach { Text(it) }
                 }
                 Text("Recorded synthesis", style = MaterialTheme.typography.titleMedium)
+                Text("Claims", style = MaterialTheme.typography.titleMedium)
+                val claims = stage?.claimLines.orEmpty()
+                if (claims.isEmpty()) {
+                    Text("No material claim has been recorded. A verified calculation is shown separately from an unverified assertion.")
+                } else {
+                    claims.forEach { line -> Text(line) }
+                }
+                Text(stage?.reviewDisclosure ?: "Reviewer independence has not been assessed.")
                 Text(stage?.recordedSynthesis ?: "No discussion record is available.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     enabledProviders.sortedBy { it.name }.forEach { id ->

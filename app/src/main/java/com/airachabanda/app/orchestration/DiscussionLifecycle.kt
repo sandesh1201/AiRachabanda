@@ -192,6 +192,7 @@ object DiscussionSynthesis {
         val participants: List<String>,
         val verification: String,
         val independence: String,
+        val verifiedCalculations: List<String> = emptyList(),
     )
 
     fun compose(input: Input): String = buildString {
@@ -199,6 +200,8 @@ object DiscussionSynthesis {
         appendLine("Direct answer: ${input.importedFinal?.trim().orEmpty().ifBlank { "No final answer has been imported." }}")
         appendLine("Key findings:")
         appendFindings(input.claims, "No participant claim is recorded.")
+        appendLine("Verified calculations:")
+        appendFindings(input.verifiedCalculations, "No calculation was verified. Participant arithmetic remains an assertion until a local calculation supports it.")
         appendLine("Supporting evidence:")
         appendFindings(input.evidence, "No source was recorded.")
         appendLine("Important assumptions:")

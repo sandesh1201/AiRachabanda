@@ -39,6 +39,7 @@ data class CouncilStage(
     val planNote: String = "",
     val stoppingReason: String = "",
     val taskGraph: List<String> = emptyList(),
+    val claimLines: List<String> = emptyList(),
 )
 
 class CouncilWorkflow(
@@ -80,12 +81,17 @@ class CouncilWorkflow(
         val tasks = council.tasksForSession(session.id)
         val objections = discussion.objections(session.id)
         val rebuttals = objections.sumOf { discussion.rebuttals(it.id).size }
-        val verification = discussion.verifications(session.id).lastOrNull()?.outcome ?: "Not recorded"
-        val finalAnswer = discussion.conclusions(session.id).lastOrNull { it.kind == "FINAL" }?.body
+        val verifications = discussion.verifications(session.id)
+        val verification = verifications.lastOrNull()?.outcome ?: "Not recorded"
+        val claims = discussion.claims(session.id)
+        val latestFinal = discussion.conclusions(session.id).lastOrNull { it.kind == "FINAL" }
+        val correctionAt = claims.filter { ClaimLedger.parse(it.statement).corrects.isNotEmpty() }.maxOfOrNull { it.createdAtEpochMs }
+        val staleFinal = latestFinal != null && correctionAt != null &&
+            CorrectionPropagation.finalIsStale(latestFinal.createdAtEpochMs, correctionAt)
+        val finalAnswer = if (staleFinal) null else latestFinal?.body
         val assistedOnly = people.isEmpty() || people.all { it.participationMode == "ASSISTED" }
         val critique = tasks.firstOrNull { it.kind == "CRITIQUE" }
         val review = reviewAssessment(people)
-        val claims = discussion.claims(session.id)
         val evidence = if (claims.isEmpty()) emptyList() else discussion.evidenceFor(claims.map { it.id })
         val dependencies = discussion.dependenciesForSession(session.id)
         val exchanges = discussion.protocolActions(session.id).map { action ->
@@ -95,10 +101,13 @@ class CouncilWorkflow(
         val synthesis = DiscussionSynthesis.compose(
             DiscussionSynthesis.Input(
                 importedFinal = finalAnswer,
-                claims = claims.map { "Participant assertion: ${it.statement}" },
+                claims = claims.map { claim ->
+                    val parsed = ClaimLedger.parse(claim.statement)
+                    "${parsed.kind.name}: ${parsed.body}"
+                },
                 evidence = evidence.map { it.locator },
                 assumptions = objections.filter { it.category == "UNSUPPORTED_ASSUMPTION" }.map { it.explanation },
-                corrections = claims.filter { it.messageId == null }.map { it.statement },
+                corrections = claims.map { ClaimLedger.parse(it.statement) }.filter { it.corrects.isNotEmpty() }.map { it.body },
                 alternatives = objections.filter { it.category == "ALTERNATIVE_EXPLANATION" }.map { it.explanation },
                 unresolved = objections.filter { it.resolution in UNRESOLVED }.map { it.explanation },
                 participants = people.map { person ->
@@ -108,8 +117,22 @@ class CouncilWorkflow(
                 },
                 verification = verification,
                 independence = review.disclosure,
+                verifiedCalculations = verifications.filter { it.outcome == "SUPPORTED" }.map { it.note },
             ),
         )
+        val claimLines = claims.map { claim ->
+            val parsed = ClaimLedger.parse(claim.statement)
+            val outcome = verifications.lastOrNull { it.targetClaimId == claim.id }?.outcome
+            val math = when {
+                parsed.kind == ClaimLedger.Kind.MATHEMATICAL && outcome == "SUPPORTED" -> "verified calculation"
+                parsed.kind == ClaimLedger.Kind.MATHEMATICAL && outcome == "CONTRADICTED" -> "contradicted calculation"
+                parsed.kind == ClaimLedger.Kind.MATHEMATICAL -> "unverified calculation"
+                else -> "participant assertion"
+            }
+            val related = objections.count { it.targetClaimId == claim.id }
+            val correction = if (parsed.corrects.isNotEmpty()) " Corrects an earlier claim." else ""
+            "${parsed.kind.name}. $math. Objections $related.$correction ${parsed.body}"
+        }
         return CouncilStage(
             sessionId = session.id,
             stage = stageLabel(session.state),
@@ -151,6 +174,7 @@ class CouncilWorkflow(
                 val objective = task.objective.ifBlank { "No separate objective was stored." }
                 "${task.kind} ${task.state}. $dependency. Assigned to ${task.providerId}. $objective"
             },
+            claimLines = claimLines,
         )
     }
 
@@ -413,6 +437,8 @@ class CouncilWorkflow(
         )
         val UNRESOLVED = setOf(
             ResolutionStatus.OPEN.name,
+            ResolutionStatus.UNDER_REVIEW.name,
+            ResolutionStatus.REBUTTAL_REQUESTED.name,
             ResolutionStatus.UNRESOLVED.name,
             ResolutionStatus.INSUFFICIENT_EVIDENCE.name,
         )

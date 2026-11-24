@@ -20,6 +20,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 005G: Android AuthorizationClient can obtain a read-only token. Metadata and one free-tier generation run only after in-app confirmation, key binding, and billingEnabled false. No live response has been received until the owner finishes Google configuration.
 - Milestone 006A: The Council can run an assisted discussion from stored responses. Participant requests, objections, and the recorded synthesis do not contact a provider.
 - Milestone 006B: Discussion planning, task dependencies, and parallel assisted work are recorded on the device. No live provider request is added.
+- Milestone 007: Claim records, local arithmetic, objection history, and evidence notes are stored on the device. Live provider requests and live web retrieval remain off.
 
 ## Next
 

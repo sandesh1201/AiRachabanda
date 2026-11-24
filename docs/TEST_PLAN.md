@@ -151,6 +151,16 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Context for an initial task does not include another part. A compressed context keeps the source locator and says it is not the original source.
 - Pause is not required for a cancelled graph to survive a process restart.
 
+## Milestone 007 checks
+
+- A claimed arithmetic result is verified only when the local calculation matches it. A wrong result is contradicted. An expression without a claimed result stays unverified.
+- Division by zero, unsupported operations, deep nesting, and oversized expressions are rejected. No generated code is executed.
+- A citation locator is stored as unverified. The deferred retriever does not fetch it.
+- Disagreement cannot mark an objection corrected. A blank reason cannot change status. New contradictory evidence reopens a resolved objection.
+- Correcting a claim keeps the original text, marks a dependent claim, cancels a pending task aimed at the claim, and leaves unrelated completed work. An earlier final answer is not shown as current.
+- The same verified model on two hosts is not an independent review. Majority agreement and a shared citation are not proof.
+- The benchmark report scores supplied answers and says it is not a measured improvement in live AI accuracy.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

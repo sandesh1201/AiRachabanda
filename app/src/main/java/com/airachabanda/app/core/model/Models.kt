@@ -259,6 +259,8 @@ enum class ObjectionSeverity {
 
 enum class ResolutionStatus {
     OPEN,
+    UNDER_REVIEW,
+    REBUTTAL_REQUESTED,
     CONFIRMED_ERROR,
     CORRECTED,
     REBUTTED_WITH_EVIDENCE,

@@ -113,6 +113,8 @@ Milestone 006A extends the Council with structured participant requests, role as
 
 Milestone 006B adds a deterministic discussion plan, a task dependency graph, and concurrency limits. Participant text cannot raise the budget or authorize billing, credentials, network access, or code execution. The recorded synthesis remains a stored-record fallback. No live provider request is added.
 
+Milestone 007 records claim kind, local arithmetic checks, objection status changes, and evidence notes on the existing Room schema. A calculation is verified only when the local result matches the claimed result. A locator is not treated as support, and live web retrieval is not performed. Fixture scores are not a measurement of live AI accuracy.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.
