@@ -21,6 +21,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 006A: The Council can run an assisted discussion from stored responses. Participant requests, objections, and the recorded synthesis do not contact a provider.
 - Milestone 006B: Discussion planning, task dependencies, and parallel assisted work are recorded on the device. No live provider request is added.
 - Milestone 007: Claim records, local arithmetic, objection history, and evidence notes are stored on the device. Live provider requests and live web retrieval remain off.
+- Milestone 008: Public research can use Wikimedia, arXiv, and the Federal Register after consent. A retrieved page is not treated as proof. No AI inference request is added.
 
 ## Next
 

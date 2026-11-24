@@ -115,6 +115,8 @@ Milestone 006B adds a deterministic discussion plan, a task dependency graph, an
 
 Milestone 007 records claim kind, local arithmetic checks, objection status changes, and evidence notes on the existing Room schema. A calculation is verified only when the local result matches the claimed result. A locator is not treated as support, and live web retrieval is not performed. Fixture scores are not a measurement of live AI accuracy.
 
+Milestone 008 retrieves public sources only after consent. Wikimedia, arXiv, and the Federal Register are the approved connectors. A user may also submit one public HTTPS URL. A successful response is stored as retrieved and not assessed. It is not treated as proof of a claim. No AI inference request is added.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

@@ -223,6 +223,7 @@ object BudgetLedger {
 enum class ExecutionIntent {
     PREPARE_ASSISTED_TASK,
     RECORD_IMPORTED_TEXT,
+    RETRIEVE_APPROVED_SOURCE,
     ENABLE_BILLING,
     READ_CREDENTIAL,
     OPEN_NETWORK,
@@ -235,6 +236,7 @@ object ExecutionGate {
     fun allow(intent: ExecutionIntent): Boolean = when (intent) {
         ExecutionIntent.PREPARE_ASSISTED_TASK,
         ExecutionIntent.RECORD_IMPORTED_TEXT,
+        ExecutionIntent.RETRIEVE_APPROVED_SOURCE,
         -> true
         ExecutionIntent.ENABLE_BILLING,
         ExecutionIntent.READ_CREDENTIAL,
@@ -243,6 +245,16 @@ object ExecutionGate {
         ExecutionIntent.RAISE_BUDGET,
         ExecutionIntent.GRANT_PERMISSION,
         -> false
+    }
+
+    fun retrievalPermitted(host: String, userSuppliedUrl: Boolean): Boolean {
+        if (!allow(ExecutionIntent.RETRIEVE_APPROVED_SOURCE)) return false
+        if (allow(ExecutionIntent.OPEN_NETWORK)) return false
+        return if (userSuppliedUrl) {
+            DestinationPolicy.hostAllowedForUserUrl(host)
+        } else {
+            host in ResearchConnectors.approvedHosts
+        }
     }
 
     fun retryUnknownOutcome(): Boolean = false

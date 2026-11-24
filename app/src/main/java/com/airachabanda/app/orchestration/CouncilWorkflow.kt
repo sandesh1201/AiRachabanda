@@ -40,6 +40,7 @@ data class CouncilStage(
     val stoppingReason: String = "",
     val taskGraph: List<String> = emptyList(),
     val claimLines: List<String> = emptyList(),
+    val researchLines: List<String> = emptyList(),
 )
 
 class CouncilWorkflow(
@@ -175,7 +176,34 @@ class CouncilWorkflow(
                 "${task.kind} ${task.state}. $dependency. Assigned to ${task.providerId}. $objective"
             },
             claimLines = claimLines,
+            researchLines = researchLines(evidence, council.eventsForConversation(session.conversationId)),
         )
+    }
+
+    suspend fun searchPublic(conversationId: String, query: String, connector: String, consent: Boolean): String {
+        val session = activeSession(conversationId) ?: return "No discussion is open."
+        return engine.searchPublicSource(session.id, query, connector, null, consent)
+    }
+
+    suspend fun retrievePublicUrl(conversationId: String, url: String, consent: Boolean): String {
+        val session = activeSession(conversationId) ?: return "No discussion is open."
+        return engine.retrievePublicUrl(session.id, url, null, consent)
+    }
+
+    private fun researchLines(
+        evidence: List<com.airachabanda.app.persistence.EvidenceReferenceEntity>,
+        events: List<com.airachabanda.app.persistence.WorkflowEventEntity>,
+    ): List<String> {
+        val failures = events.filter { it.type == "RESEARCH_FAILED" || it.type == "RESEARCH_PROPOSAL" || it.type == "RESEARCH_RETRIEVED" }
+            .map { "${it.type.replace('_', ' ')}. ${it.summary}" }
+        val sources = evidence.map { EvidenceNotes.parse(it.note) }
+            .filter { it.kind == EvidenceKind.RETRIEVED_SOURCE }
+            .map { record ->
+                val published = record.published.ifBlank { "publication date not in the source" }
+                val title = record.title.ifBlank { "Untitled source" }
+                "Source $title. Published $published. Retrieved ${record.retrieved}. Verification ${record.verification.ifBlank { "NOT_RETRIEVED" }}. ${record.canonical}"
+            }
+        return (failures + sources).ifEmpty { emptyList() }
     }
 
     private suspend fun reviewAssessment(people: List<com.airachabanda.app.persistence.ParticipantEntity>): ReviewAssessment {

@@ -327,6 +327,14 @@ private fun CouncilRoute(
             val conversation = conversationId.orEmpty()
             navController.navigate("import?provider=${provider.name}&task=$task&conversation=$conversation")
         },
+        onSearch = { query, connector, consent ->
+            val id = conversationId ?: return@CouncilScreen
+            model.searchPublic(id, query, connector, consent, notice)
+        },
+        onRetrieveUrl = { url, consent ->
+            val id = conversationId ?: return@CouncilScreen
+            model.retrievePublicUrl(id, url, consent, notice)
+        },
         enabledProviders = enabled,
         contentPadding = padding,
     )

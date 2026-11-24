@@ -43,8 +43,10 @@ import com.airachabanda.app.provider.openrouter.DispatchOutcome
 import com.airachabanda.app.provider.openrouter.OpenRouterCandidate
 import com.airachabanda.app.provider.openrouter.OpenRouterDispatch
 import com.airachabanda.app.provider.openrouter.OpenRouterFailure
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 fun interface ParticipantSource {
@@ -100,6 +102,8 @@ class OrchestrationEngine(
     private val ids: () -> String = { UUID.randomUUID().toString() },
     private val dispatcher: OpenRouterDispatch? = null,
     private val prepared: PreparedProviderDispatch? = null,
+    private val researchTransport: ResearchTransport = PublicHttp(),
+    private val nameResolver: (String) -> List<java.net.InetAddress> = { host -> java.net.InetAddress.getAllByName(host).toList() },
 ) {
     private val mutex = Mutex()
 
@@ -1645,9 +1649,26 @@ class OrchestrationEngine(
                 ),
             )
         }
+        val proposal = ResearchProposal.parse(text)
+        if (proposal != null && !ResearchProposal.automaticUrlFetchPermitted()) {
+            council.insertEvent(
+                WorkflowEventEntity(
+                    id = ids(),
+                    conversationId = fresh(sessionId).conversationId,
+                    providerId = null,
+                    type = "RESEARCH_PROPOSAL",
+                    summary = "A research proposal was recorded and was not sent. Consent is required before a connector is contacted.",
+                    createdAtEpochMs = now,
+                ),
+            )
+        }
         if (task.kind == KIND_CRITIQUE) {
             ObjectionExtractor.extract(text).forEach { found ->
-                val claimId = ObjectionExtractor.matchingClaim(found.claimFragment, claims) ?: return@forEach
+                val claimId = if (found.claimId != null) {
+                    ClaimAssociation.resolve(found.claimId, null, claims)
+                } else {
+                    ObjectionExtractor.matchingClaim(found.claimFragment, claims)
+                } ?: return@forEach
                 val author = task.participantId ?: return@forEach
                 discussion.insertObjection(
                     ObjectionEntity(
@@ -1802,6 +1823,121 @@ class OrchestrationEngine(
                 if (decision.accepted) discussion.updateObjectionStatus(objection.id, ResolutionStatus.OPEN.name, decision.reason)
             }
         snapshot(sessionId)
+    }
+
+    suspend fun searchPublicSource(
+        sessionId: String,
+        query: String,
+        connectorName: String,
+        claimId: String?,
+        consent: Boolean,
+    ): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val connector = runCatching { ResearchConnector.valueOf(connectorName) }.getOrNull()
+                ?: return@withLock "The research connector is not one of the approved public services."
+            finishRetrieval(sessionId, claimId) { resolved, fingerprints, stored ->
+                ResearchEngine.runConnector(
+                    connector = connector,
+                    query = query,
+                    consent = consent,
+                    now = clock(),
+                    claimId = resolved,
+                    existingFingerprints = fingerprints,
+                    storedSources = stored,
+                    transport = researchTransport,
+                    resolver = nameResolver,
+                )
+            }
+        }
+    }
+
+    suspend fun retrievePublicUrl(sessionId: String, url: String, claimId: String?, consent: Boolean): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            finishRetrieval(sessionId, claimId) { resolved, fingerprints, stored ->
+                ResearchEngine.runUserUrl(
+                    url = url,
+                    consent = consent,
+                    now = clock(),
+                    claimId = resolved,
+                    existingFingerprints = fingerprints,
+                    storedSources = stored,
+                    transport = researchTransport,
+                    resolver = nameResolver,
+                )
+            }
+        }
+    }
+
+    private suspend fun finishRetrieval(
+        sessionId: String,
+        claimId: String?,
+        run: (String?, Set<String>, Int) -> ResearchOutcome,
+    ): String {
+        if (discussion.session(sessionId) == null) {
+            return "No discussion is open."
+        }
+        val claims = discussion.claims(sessionId)
+        val resolved = ClaimAssociation.resolve(claimId, null, claims.map { it.id to it.statement })
+        if (!claimId.isNullOrBlank() && resolved == null) {
+            return "The claim identifier is missing or ambiguous. Nothing was transmitted."
+        }
+        val evidence = if (claims.isEmpty()) emptyList() else discussion.evidenceFor(claims.map { it.id })
+        val fingerprints = evidence.map { EvidenceNotes.parse(it.note).fingerprint }.filter { it.isNotBlank() }.toSet()
+        val stored = evidence.count { EvidenceNotes.parse(it.note).verification == EvidenceAssessment.RETRIEVED_NOT_ASSESSED.name || EvidenceNotes.parse(it.note).kind == EvidenceKind.RETRIEVED_SOURCE }
+        val outcome = run(resolved, fingerprints, stored)
+        val session = fresh(sessionId)
+        if (!outcome.stored || outcome.record == null) {
+            council.insertEvent(
+                WorkflowEventEntity(
+                    id = ids(),
+                    conversationId = session.conversationId,
+                    providerId = null,
+                    type = "RESEARCH_FAILED",
+                    summary = outcome.message,
+                    createdAtEpochMs = clock(),
+                ),
+            )
+            return outcome.message
+        }
+        val now = clock()
+        val anchor = resolved ?: ids().also { created ->
+            discussion.insertClaim(
+                ClaimEntity(
+                    id = created,
+                    sessionId = sessionId,
+                    messageId = null,
+                    authorParticipantId = discussion.participants(sessionId).firstOrNull()?.id ?: created,
+                    roundNumber = 1,
+                    statement = ClaimLedger.format(
+                        ClaimLedger.Kind.SOURCE_DEPENDENT,
+                        "",
+                        "Research record. This is not a verified fact.",
+                    ),
+                    createdAtEpochMs = now,
+                ),
+            )
+        }
+        val record = outcome.record.copy(claim = anchor)
+        discussion.insertEvidence(
+            EvidenceReferenceEntity(
+                id = ids(),
+                claimId = anchor,
+                locator = outcome.canonical ?: record.canonical,
+                note = EvidenceNotes.format(record),
+                createdAtEpochMs = now,
+            ),
+        )
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                providerId = null,
+                type = "RESEARCH_RETRIEVED",
+                summary = "Retrieved ${record.title.ifBlank { "a public source" }}. Published ${record.published.ifBlank { "date not in the source" }}. Retrieved $now. Verification ${record.verification}.",
+                createdAtEpochMs = now,
+            ),
+        )
+        return outcome.message
     }
 
     private suspend fun snapshot(sessionId: String): SessionSnapshot {

@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -147,6 +148,8 @@ fun CouncilScreen(
     onSkip: (String) -> Unit,
     onDefer: (String) -> Unit,
     onImport: (ProviderId, String?) -> Unit,
+    onSearch: (String, String, Boolean) -> Unit,
+    onRetrieveUrl: (String, Boolean) -> Unit,
     enabledProviders: Set<ProviderId>,
     contentPadding: PaddingValues,
 ) {
@@ -156,6 +159,10 @@ fun CouncilScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     var question by rememberSaveable { mutableStateOf("") }
     var objection by rememberSaveable { mutableStateOf("") }
+    var researchQuery by rememberSaveable { mutableStateOf("") }
+    var publicUrl by rememberSaveable { mutableStateOf("") }
+    var researchConsent by rememberSaveable { mutableStateOf(false) }
+    var connector by rememberSaveable { mutableStateOf("WIKIMEDIA") }
     var selectedRaw by rememberSaveable(enabledProviders.sortedBy { it.name }.joinToString(",")) {
         mutableStateOf(enabledProviders.joinToString(","))
     }
@@ -264,6 +271,49 @@ fun CouncilScreen(
                     claims.forEach { line -> Text(line) }
                 }
                 Text(stage?.reviewDisclosure ?: "Reviewer independence has not been assessed.")
+                Text("Research", style = MaterialTheme.typography.titleMedium)
+                Text("A search sends only the query, or a URL you enter, to the selected public service. The rest of the conversation stays on this device.")
+                val research = stage?.researchLines.orEmpty()
+                if (research.isEmpty()) {
+                    Text("No public source has been retrieved for this discussion.")
+                } else {
+                    research.forEach { line ->
+                        Text(line)
+                        val link = line.substringAfterLast(' ')
+                        if (link.startsWith("https://")) {
+                            TextButton(onClick = { onOpenUrl(link) }) { Text("Open source") }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = researchConsent, onCheckedChange = { researchConsent = it })
+                    Text("I consent to send this query or URL.")
+                }
+                androidx.compose.material3.OutlinedTextField(
+                    value = researchQuery,
+                    onValueChange = { researchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Public research query") },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("WIKIMEDIA" to "Wikimedia", "ARXIV" to "arXiv", "FEDERAL_REGISTER" to "Federal Register").forEach { (id, label) ->
+                        FilterChip(selected = connector == id, onClick = { connector = id }, label = { Text(label) })
+                    }
+                }
+                Button(
+                    onClick = { onSearch(researchQuery, connector, researchConsent) },
+                    enabled = researchConsent && researchQuery.isNotBlank(),
+                ) { Text("Search public sources") }
+                androidx.compose.material3.OutlinedTextField(
+                    value = publicUrl,
+                    onValueChange = { publicUrl = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Public HTTPS URL") },
+                )
+                Button(
+                    onClick = { onRetrieveUrl(publicUrl, researchConsent) },
+                    enabled = researchConsent && publicUrl.startsWith("https://"),
+                ) { Text("Retrieve page") }
                 Text(stage?.recordedSynthesis ?: "No discussion record is available.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     enabledProviders.sortedBy { it.name }.forEach { id ->
@@ -423,6 +473,9 @@ fun ActivityScreen(events: List<WorkflowEvent>, contentPadding: PaddingValues) {
         return
     }
     LazyColumn(contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Text("Recorded on this device. A research line appears only after a request is sent or refused.")
+        }
         items(events, key = { it.id }) { event ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {

@@ -85,9 +85,9 @@ object DiscussionExchange {
 }
 
 object ObjectionExtractor {
-    data class Found(val category: ObjectionCategory, val claimFragment: String, val explanation: String)
+    data class Found(val category: ObjectionCategory, val claimFragment: String, val explanation: String, val claimId: String? = null)
 
-    private val header = Regex("""^OBJECTION category=([A-Z_]+) claim="([^"]+)"""")
+    private val header = Regex("""^OBJECTION category=([A-Z_]+) claim="([^"]+)"(?: claimId=(\S+))?""")
 
     fun extract(body: String): List<Found> {
         val found = mutableListOf<Found>()
@@ -108,15 +108,21 @@ object ObjectionExtractor {
                 if (line.isNotEmpty()) explanation.append(line).append(' ')
                 index += 1
             }
+            val claimId = match.groupValues.getOrNull(3)?.trim()?.takeIf { it.isNotEmpty() }
             if (category != null && fragment.length >= 12 && explanation.isNotBlank()) {
-                found += Found(category, fragment, explanation.toString().trim())
+                found += Found(category, fragment, explanation.toString().trim(), claimId)
             }
         }
         return found
     }
 
-    fun matchingClaim(fragment: String, claims: List<Pair<String, String>>): String? =
-        claims.firstOrNull { (_, statement) -> statement.contains(fragment) }?.first
+    fun matchingClaim(fragment: String, claims: List<Pair<String, String>>): String? {
+        val matches = claims.filter { (_, statement) ->
+            val body = ClaimLedger.parse(statement).body
+            body.contains(fragment) && !body.contains("OBJECTION category=")
+        }
+        return if (matches.size == 1) matches.single().first else null
+    }
 }
 
 object VerificationExtractor {

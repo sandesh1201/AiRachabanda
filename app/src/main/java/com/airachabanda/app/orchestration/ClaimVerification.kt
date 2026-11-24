@@ -276,6 +276,16 @@ object EvidenceNotes {
         val retrieved: String,
         val status: String,
         val excerpt: String,
+        val sourceId: String = "",
+        val canonical: String = "",
+        val original: String = "",
+        val title: String = "",
+        val author: String = "",
+        val fingerprint: String = "",
+        val verification: String = "",
+        val assessor: String = "",
+        val claim: String = "",
+        val metadata: String = "",
     )
 
     fun format(record: Record): String = buildString {
@@ -284,8 +294,47 @@ object EvidenceNotes {
         appendLine("published=${record.published}")
         appendLine("retrieved=${record.retrieved}")
         appendLine("status=${record.status}")
+        appendLine("sourceId=${record.sourceId}")
+        appendLine("canonical=${record.canonical}")
+        appendLine("original=${record.original}")
+        appendLine("title=${record.title}")
+        appendLine("author=${record.author}")
+        appendLine("fingerprint=${record.fingerprint}")
+        appendLine("verification=${record.verification}")
+        appendLine("assessor=${record.assessor}")
+        appendLine("claim=${record.claim}")
+        appendLine("metadata=${record.metadata}")
         append("excerpt=${record.excerpt}")
     }.trim()
+
+    fun parse(note: String): Record {
+        val excerptAt = note.indexOf("\nexcerpt=")
+        val head = if (excerptAt >= 0) note.substring(0, excerptAt) else note
+        val excerpt = if (excerptAt >= 0) note.substring(excerptAt + "\nexcerpt=".length) else ""
+        val fields = head.lines().mapNotNull { line ->
+            val split = line.indexOf('=')
+            if (split <= 0) null else line.substring(0, split) to line.substring(split + 1)
+        }.toMap()
+        val kind = runCatching { EvidenceKind.valueOf(fields["kind"].orEmpty()) }.getOrDefault(EvidenceKind.PARTICIPANT_CITATION)
+        return Record(
+            kind = kind,
+            publisher = fields["publisher"].orEmpty(),
+            published = fields["published"].orEmpty(),
+            retrieved = fields["retrieved"].orEmpty(),
+            status = fields["status"].orEmpty(),
+            excerpt = excerpt,
+            sourceId = fields["sourceId"].orEmpty(),
+            canonical = fields["canonical"].orEmpty(),
+            original = fields["original"].orEmpty(),
+            title = fields["title"].orEmpty(),
+            author = fields["author"].orEmpty(),
+            fingerprint = fields["fingerprint"].orEmpty(),
+            verification = fields["verification"].orEmpty(),
+            assessor = fields["assessor"].orEmpty(),
+            claim = fields["claim"].orEmpty(),
+            metadata = fields["metadata"].orEmpty(),
+        )
+    }
 
     fun citation(locator: String): Record = Record(
         kind = EvidenceKind.PARTICIPANT_CITATION,

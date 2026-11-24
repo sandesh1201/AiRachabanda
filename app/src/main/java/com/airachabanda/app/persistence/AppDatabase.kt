@@ -264,6 +264,9 @@ interface CouncilDao {
     @Query("SELECT * FROM workflow_events ORDER BY createdAtEpochMs DESC")
     fun observeEvents(): Flow<List<WorkflowEventEntity>>
 
+    @Query("SELECT * FROM workflow_events WHERE conversationId = :conversationId ORDER BY createdAtEpochMs ASC")
+    suspend fun eventsForConversation(conversationId: String): List<WorkflowEventEntity>
+
     @Query("SELECT COUNT(*) FROM provider_configs")
     suspend fun providerConfigCount(): Int
 

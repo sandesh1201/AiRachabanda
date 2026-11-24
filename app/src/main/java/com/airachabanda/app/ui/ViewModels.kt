@@ -222,6 +222,20 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun searchPublic(conversationId: String, query: String, connector: String, consent: Boolean, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.searchPublic(conversationId, query, connector, consent))
+            refresh()
+        }
+    }
+
+    fun retrievePublicUrl(conversationId: String, url: String, consent: Boolean, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.retrievePublicUrl(conversationId, url, consent))
+            refresh()
+        }
+    }
+
     fun advance(conversationId: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
             onResult(workflow.advance(conversationId))

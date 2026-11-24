@@ -196,7 +196,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.7.0. Free chat is assisted. Claim checks use stored records and local arithmetic. Gemini stays behind in-app confirmation. Local inference is not installed.")
+                Text("Version 0.8.0. Free chat is assisted. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed.")
             }
         }
     }

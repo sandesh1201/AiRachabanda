@@ -161,6 +161,17 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - The same verified model on two hosts is not an independent review. Majority agreement and a shared citation are not proof.
 - The benchmark report scores supplied answers and says it is not a measured improvement in live AI accuracy.
 
+## Milestone 008 checks
+
+- A private, loopback, link-local, or credential-bearing URL is rejected before a connection.
+- A redirect toward a private address is not followed.
+- An oversized response is not stored.
+- Script text is removed from a page. The remaining text is stored as untrusted data.
+- Wikimedia, arXiv, and Federal Register fixtures parse only fields present in the response.
+- A retrieved source stays retrieved and not assessed. Consent is required before a request. A repeated canonical URL is not a second source.
+- A missing or ambiguous claim identifier does not start a retrieval.
+- A stored source survives a process restart.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.
