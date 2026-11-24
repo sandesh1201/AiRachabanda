@@ -105,6 +105,8 @@ Milestone 005D classifies free chat separately from a free API. Providers with a
 
 Milestone 005E prepares a Gemini key lookup that accepts only the project returned for that key, and keeps Cloudflare disabled because no subscription or entitlement field names Workers Free. An optional loopback local provider is present and does not run. No runtime was installed and no model was downloaded.
 
+Milestone 005F keeps Gemini metadata and the one prepared free-tier request unsent until an Android OAuth client is registered and billingEnabled is false for the looked-up project. Android reaches a Windows Ollama server only through adb reverse to device loopback. Cleartext stays off.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

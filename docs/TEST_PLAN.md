@@ -118,6 +118,15 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Two verified local model ids are classified as a cross-model review. The disclosure says agreement is not proof. No answer text is generated.
 - No inference runtime was installed and no model file was downloaded.
 
+## Milestone 005F checks
+
+- A looked-up project with billingEnabled false can pass the inference gate. billingEnabled true, a project mismatch, an expired token, and a missing permission cannot.
+- Unknown model pricing, missing consent, a zero request budget, and an exhausted allowance block the single request.
+- The prepared body caps output at 128 tokens and does not contain tools or the expected answer.
+- Completed, truncated, and unknown Gemini streams stay distinct. A response is graded only after text arrives.
+- Logs redact an API key, an access token, and a lookup query.
+- 10.0.2.2 is rejected. 127.0.0.1 remains the adb-reverse route. Cleartext stays disabled.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

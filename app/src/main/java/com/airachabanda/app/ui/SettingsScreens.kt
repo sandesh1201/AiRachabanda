@@ -170,21 +170,16 @@ fun SettingsDetail(
                 onSave = { account, secret -> onSaveCloudflare(account, secret) },
                 onRemove = onRemoveCloudflare,
             )
-            "gemini" -> DirectProviderSettings(
-                title = "Gemini API",
+            "gemini" -> GeminiGuidedSetup(
                 stored = geminiReady,
-                credentialLabel = "API key",
-                accountLabel = null,
-                status = geminiStatus(geminiReady),
-                consent = "A confirmed check uses a separate OAuth token, not the Gemini API key. GET https://apikeys.googleapis.com/v2/keys:lookupKey needs scope cloud-platform.read-only and permission apikeys.keys.lookup. Only the parent project from that response is accepted. A typed project ID is ignored. GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo on that parent needs resourcemanager.projects.get, and billingEnabled must be false. This build sends neither request. Free-tier prompts and responses may be used to improve Google products.",
-                onSave = { _, secret -> onSaveGemini(secret) },
+                onSave = onSaveGemini,
                 onRemove = onRemoveGemini,
             )
             else -> {
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.5.3. Free chat is assisted. Automated inference stays off. Local inference is prepared and not installed.")
+                Text("Version 0.5.4. Free chat is assisted. Gemini metadata and inference stay off until you authorize them in this app. Local inference is not installed.")
             }
         }
     }
@@ -419,8 +414,76 @@ private fun geminiStatus(stored: Boolean) = ProviderStatusLines(
     capabilities = "Text generation is prepared. Grounding, search, caching, and tools stay off.",
     usage = "Free-tier limits are not copied from an old table. Remaining quota is unknown.",
     verified = "Never",
-    blockers = "Project billing can be read only with Cloud Billing permission billing.resourceAssociations.get. That permission is not requested. Free-tier content may be used to improve Google products. Inference stays off.",
+    blockers = "Lookup needs apikeys.keys.lookup. Billing needs resourcemanager.projects.get on the looked-up project. The Android OAuth client is not registered, so neither request is sent. Free-tier content may be used to improve Google products.",
 )
+
+@Composable
+private fun GeminiGuidedSetup(
+    stored: Boolean,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var secret by rememberSaveable { mutableStateOf("") }
+    var notice by rememberSaveable { mutableStateOf("No Google request has been sent.") }
+    var metadataConsent by rememberSaveable { mutableStateOf(false) }
+    var showMetadata by rememberSaveable { mutableStateOf(false) }
+    var showInference by rememberSaveable { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Gemini API", style = MaterialTheme.typography.headlineSmall)
+        Text("The Gemini API key cannot prove which project it belongs to. A separate read-only Google sign-in is required. The scope is cloud-platform.read-only. The account needs apikeys.keys.lookup and resourcemanager.projects.get on the project that owns the key. A typed project ID is not accepted.")
+        Text("The lookup is GET https://apikeys.googleapis.com/v2/keys:lookupKey. Billing is GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo for that parent only. billingEnabled must be false. Free-tier prompts and responses may be used to improve Google products.")
+        Text("Create an Android OAuth client for package com.airachabanda.app and this build's SHA-1. Do not create a Web client and do not put a client secret in the app. Until that client exists, authorization cannot start.")
+        Text(if (stored) "An API key is stored in Android Keystore and is not shown again." else "No Gemini API key is stored.")
+        Text(notice)
+        OutlinedTextField(
+            value = secret,
+            onValueChange = { secret = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("API key") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                onSave(secret)
+                secret = ""
+                notice = "The key field was cleared. No Gemini request was sent."
+            }, enabled = secret.isNotBlank()) { Text("Save") }
+            TextButton(onClick = onRemove, enabled = stored) { Text("Remove credentials") }
+        }
+        Button(onClick = { showMetadata = true }, enabled = stored) { Text("Review metadata check") }
+        Button(onClick = { showInference = true }, enabled = metadataConsent) { Text("Review one inference request") }
+    }
+    if (showMetadata) {
+        AlertDialog(
+            onDismissRequest = { showMetadata = false },
+            title = { Text("Read Gemini project billing?") },
+            text = { Text("This would contact only the key lookup and the billing read for the project that owns the stored key. It does not send a prompt. The Android OAuth client is not registered, so this build will not send either request.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMetadata = false
+                    metadataConsent = true
+                    notice = "Metadata consent is recorded. No lookup or billing request was sent."
+                }) { Text("Record consent") }
+            },
+            dismissButton = { TextButton(onClick = { showMetadata = false }) { Text("Cancel") } },
+        )
+    }
+    if (showInference) {
+        AlertDialog(
+            onDismissRequest = { showInference = false },
+            title = { Text("Send one free-tier question?") },
+            text = { Text("The prepared prompt asks what 17 multiplied by 23 is, with at most 128 output tokens, no tools, and no retry. Billing has not been verified, so the request will not be sent.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showInference = false
+                    notice = "Inference consent is recorded. Billing eligibility is not established, so no generation request was sent."
+                }) { Text("Record consent") }
+            },
+            dismissButton = { TextButton(onClick = { showInference = false }) { Text("Cancel") } },
+        )
+    }
+}
 
 @Composable
 private fun DirectProviderSettings(

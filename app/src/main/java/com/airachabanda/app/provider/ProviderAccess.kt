@@ -94,7 +94,7 @@ object ProviderAccess {
         modes = setOf(ProviderAccessMode.LOCAL_INFERENCE),
         chatUrl = null,
         labels = listOf(AccessLabel.LOCAL_INFERENCE, AccessLabel.CONFIGURATION_REQUIRED),
-        note = "Optional loopback inference. No runtime is installed, and cloud execution is rejected.",
+        note = "Optional. Use adb reverse to the Windows loopback address. Android localhost is not Windows localhost. Cleartext stays off.",
     )
 
     private fun apiOnly(id: ProviderId, note: String) = ProviderAccessProfile(

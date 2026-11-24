@@ -16,10 +16,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 005C: Cloudflare and Gemini adapters, configuration screens, and provider-specific billing policies. Live metadata and live inference stay off.
 - Milestone 005D: Free chat is assisted for providers that publish an official chat. Free APIs stay off until billing protection is positively established.
 - Milestone 005E: Gemini key lookup and project billing are prepared and not sent. Cloudflare still cannot positively name Workers Free. A loopback local provider is prepared. No runtime, model download, or live request.
+- Milestone 005F: Gemini consent and the single free-tier request are prepared. They stay unsent until the owner registers an Android OAuth client and a looked-up project has billing disabled. Local traffic uses adb reverse. Cleartext stays off.
 
 ## Next
 
-The shortest automated path is a loopback model after the owner installs a local runtime and downloads one small model. Gemini can be the cloud path only after an owner-consented lookup shows the key's own project has billing disabled. No live inference is authorized.
+Register the Android OAuth client, save the Gemini API key in the app, and run the metadata check only if billingEnabled is false. The one inference request stays behind a second confirmation. No live inference has been sent.
 
 ## Later
 

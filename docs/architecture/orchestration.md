@@ -46,6 +46,8 @@ Milestone 005D classifies each provider as a free automated API, free assisted c
 
 Milestone 005E keeps that rule. A Gemini binding accepts the project returned by key lookup and rejects a different typed project ID. Cloudflare product plan id `free` and entitlement feature keys do not name Workers Free. A local participant can be prepared only for an explicit loopback model with cloud execution disabled, and the dispatcher still does not send it. Two different verified local model ids are a cross-model review, and that label says agreement is not proof. Assisted ChatGPT and Claude stay available.
 
+Milestone 005F prepares one Gemini request for `gemini-3.5-flash-lite` with a 128-token cap and no tools. The request stays unsent until metadata consent, inference consent, a ready OAuth token, and a looked-up project with billing disabled are all present. Android local traffic uses adb reverse to device loopback. The emulator alias `10.0.2.2` is rejected, and cleartext stays off.
+
 Review labels are `SELF_CRITIQUE`, `SAME_MODEL_REVIEW`, `CROSS_MODEL_REVIEW`, and `INDEPENDENCE_UNVERIFIED`. The same participant reviewing its own role is reduced verification. Different hosts of the same verified model are not independent. Unknown or user-declared identity cannot establish independence. Cross-model agreement is not proof.
 
 One OpenRouter account can hold several eligible catalog models. Each participant key is the provider plus the model id. The production source still emits one participant per configured provider. It does not invent model ids. Room schema version 4 adds `capabilityNote` and `provider_completions` through `Migrations.MIGRATION_3_4`.

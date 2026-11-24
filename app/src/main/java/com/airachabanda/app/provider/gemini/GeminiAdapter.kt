@@ -81,9 +81,16 @@ class GeminiAdapter(
         if (!MODEL_ID.matches(modelId)) {
             return GeminiOutcome(OpenRouterFailure.POLICY, ResponseDisposition.FAILED, "The model ID was rejected before a request was built.")
         }
-        val part = JSONObject().put("text", prompt)
-        val content = JSONObject().put("parts", JSONArray().put(part))
-        val body = JSONObject().put("contents", JSONArray().put(content))
+        val part = JSONObject()
+        part.put("text", prompt)
+        val parts = JSONArray()
+        parts.put(part)
+        val content = JSONObject()
+        content.put("parts", parts)
+        val contents = JSONArray()
+        contents.put(content)
+        val body = JSONObject()
+        body.put("contents", contents)
         val request = HttpExchange(
             method = "POST",
             url = "https://generativelanguage.googleapis.com/v1beta/models/$modelId:streamGenerateContent?alt=sse",
@@ -117,6 +124,27 @@ class GeminiAdapter(
             return GeminiOutcome(OpenRouterFailure.MALFORMED, ResponseDisposition.FAILED, "Gemini returned HTTP ${result.status}.")
         }
         return parseStream(modelId, result.body)
+    }
+
+    fun prepareFirstInference(gate: GeminiLiveGate.Input): GeminiOutcome {
+        val decision = GeminiLiveGate.inference(gate)
+        if (!decision.permitted) {
+            return GeminiOutcome(OpenRouterFailure.POLICY, ResponseDisposition.FAILED, decision.reason, GeminiLiveGate.FREE_MODEL)
+        }
+        val request = HttpExchange(
+            method = "POST",
+            url = "https://generativelanguage.googleapis.com/v1beta/models/${GeminiLiveGate.FREE_MODEL}:streamGenerateContent?alt=sse",
+            headers = mapOf("Content-Type" to "application/json", "Accept" to "text/event-stream"),
+            body = GeminiLiveGate.requestBody().toString(),
+        )
+        RedactedLog.d("Gemini", "Prepared one free-tier request. No key or OAuth token is in this log.")
+        return GeminiOutcome(
+            OpenRouterFailure.POLICY,
+            ResponseDisposition.FAILED,
+            "The free-tier request is prepared and was not sent.",
+            GeminiLiveGate.FREE_MODEL,
+            request = request,
+        )
     }
 
     fun parseModels(body: String): List<GeminiModel> {
