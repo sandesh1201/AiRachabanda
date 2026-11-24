@@ -34,6 +34,8 @@ data class CouncilStage(
     val critiqueNote: String,
     val reviewClassification: String = "Not assessed",
     val reviewDisclosure: String = "Reviewer independence has not been assessed.",
+    val exchanges: List<String> = emptyList(),
+    val recordedSynthesis: String = "",
 )
 
 class CouncilWorkflow(
@@ -80,6 +82,30 @@ class CouncilWorkflow(
         val assistedOnly = people.isEmpty() || people.all { it.participationMode == "ASSISTED" }
         val critique = tasks.firstOrNull { it.kind == "CRITIQUE" }
         val review = reviewAssessment(people)
+        val claims = discussion.claims(session.id)
+        val evidence = if (claims.isEmpty()) emptyList() else discussion.evidenceFor(claims.map { it.id })
+        val exchanges = discussion.protocolActions(session.id).map { action ->
+            val outcome = if (action.accepted) "accepted" else "rejected"
+            "${action.action} $outcome. ${action.reason}"
+        }
+        val synthesis = DiscussionSynthesis.compose(
+            DiscussionSynthesis.Input(
+                importedFinal = finalAnswer,
+                claims = claims.map { "Participant assertion: ${it.statement}" },
+                evidence = evidence.map { it.locator },
+                assumptions = objections.filter { it.category == "UNSUPPORTED_ASSUMPTION" }.map { it.explanation },
+                corrections = claims.filter { it.messageId == null }.map { it.statement },
+                alternatives = objections.filter { it.category == "ALTERNATIVE_EXPLANATION" }.map { it.explanation },
+                unresolved = objections.filter { it.resolution in UNRESOLVED }.map { it.explanation },
+                participants = people.map { person ->
+                    val name = ProviderRegistry.definition(ProviderId.valueOf(person.providerId)).displayName
+                    val identity = discussion.modelIdentity(person.id)
+                    "$name. Declared ${identity?.userDeclaredModelId ?: ModelIdentity.UNKNOWN}. Verified ${identity?.verifiedModelId ?: ModelIdentity.UNKNOWN}."
+                },
+                verification = verification,
+                independence = review.disclosure,
+            ),
+        )
         return CouncilStage(
             sessionId = session.id,
             stage = stageLabel(session.state),
@@ -111,6 +137,8 @@ class CouncilWorkflow(
             },
             reviewClassification = review.classification.name,
             reviewDisclosure = review.disclosure,
+            exchanges = exchanges,
+            recordedSynthesis = synthesis,
         )
     }
 
@@ -292,6 +320,54 @@ class CouncilWorkflow(
     suspend fun resume(conversationId: String): String {
         val session = council.latestSession(conversationId) ?: return "No discussion is open."
         return "Stage: ${stageLabel(engine.resume(session.id).state.name)}."
+    }
+
+    suspend fun addContext(conversationId: String, text: String, invalidateOpenWork: Boolean): String {
+        val session = activeSession(conversationId) ?: return "No discussion is open."
+        engine.addUserInstruction(session.id, text, invalidateOpenWork)
+        return if (invalidateOpenWork) {
+            "The correction was added to this discussion. Open research tasks were cancelled."
+        } else {
+            "The information was added to this discussion. Completed work was kept."
+        }
+    }
+
+    suspend fun requestFollowUp(conversationId: String, instruction: String): String {
+        val session = activeSession(conversationId) ?: return "No discussion is open."
+        val actor = actorFor(session.id, ParticipantRole.RESEARCHER)
+            ?: actorFor(session.id, ParticipantRole.MODERATOR)
+            ?: return "No participant can accept a follow-up."
+        val claim = discussion.claims(session.id).lastOrNull()
+        val result = engine.submitAction(
+            ProtocolRequest(
+                sessionId = session.id,
+                actorParticipantId = actor,
+                action = CouncilAction.REQUEST_ADDITIONAL_RESEARCH,
+                body = DiscussionExchange.taskPrompt(
+                    sender = actor,
+                    recipient = actor,
+                    purpose = "ADDITIONAL_RESEARCH",
+                    claim = claim?.statement.orEmpty(),
+                    expectedOutput = "A sourced answer to the follow-up, or a statement that no source was supplied.",
+                    roundNumber = session.reviewRound.coerceAtLeast(1),
+                    depth = 1,
+                    instruction = instruction,
+                ),
+                targetId = claim?.id,
+                purpose = "ADDITIONAL_RESEARCH",
+                expectedOutput = "A sourced answer to the follow-up, or a statement that no source was supplied.",
+                recipientParticipantId = actor,
+            ),
+        )
+        return result.reason
+    }
+
+    suspend fun requestAnotherReview(conversationId: String): String {
+        val session = activeSession(conversationId) ?: return "No discussion is open."
+        val advocate = actorFor(session.id, ParticipantRole.DEVILS_ADVOCATE)
+            ?: return "No Devil's Advocate is assigned. Independent review is unavailable, and no objection was invented."
+        val snapshot = engine.continueReview(session.id)
+        return "Another review stays with the assigned Devil's Advocate. ${snapshot.statusNote}"
     }
 
     suspend fun stop(conversationId: String): String {

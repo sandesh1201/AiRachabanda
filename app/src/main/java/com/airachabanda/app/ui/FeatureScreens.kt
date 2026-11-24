@@ -138,6 +138,9 @@ fun CouncilScreen(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onAddContext: (String, Boolean) -> Unit,
+    onFollowUp: (String) -> Unit,
+    onAnotherReview: () -> Unit,
     onCopy: (String) -> Unit,
     onCopyAndOpen: (ResearchTask) -> Unit,
     onOpenUrl: (String) -> Unit,
@@ -236,6 +239,14 @@ fun CouncilScreen(
                 Text("Objections: ${stage?.objectionCount ?: 0}. Unresolved: ${stage?.unresolvedObjections ?: 0}. Rebuttals: ${stage?.rebuttalCount ?: 0}.")
                 Text("Verification: ${stage?.verification ?: "Not started"}.")
                 Text("Automated requests used ${stage?.requestsUsed ?: 0} of ${stage?.requestBudget ?: 0}. Provider quotas are unknown.")
+                Text("AI-to-AI requests", style = MaterialTheme.typography.titleMedium)
+                if (stage?.exchanges.isNullOrEmpty()) {
+                    Text("No participant request has been recorded.")
+                } else {
+                    stage?.exchanges.orEmpty().forEach { Text(it) }
+                }
+                Text("Recorded synthesis", style = MaterialTheme.typography.titleMedium)
+                Text(stage?.recordedSynthesis ?: "No discussion record is available.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     enabledProviders.sortedBy { it.name }.forEach { id ->
                         FilterChip(
@@ -251,6 +262,14 @@ fun CouncilScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onStart(question, selectedProviders) }, enabled = question.isNotBlank()) { Text("Start discussion") }
                     OutlinedButton(onClick = onAdvance) { Text("Advance") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onAddContext(draft, false) }, enabled = draft.isNotBlank()) { Text("Add context") }
+                    OutlinedButton(onClick = { onAddContext(draft, true) }, enabled = draft.isNotBlank()) { Text("Correct assumption") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onFollowUp(question) }, enabled = question.isNotBlank()) { Text("Request follow-up") }
+                    OutlinedButton(onClick = onAnotherReview) { Text("Request another review") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onPause) { Text("Pause") }

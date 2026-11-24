@@ -18,10 +18,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 005E: Gemini key lookup and project billing are prepared and not sent. Cloudflare still cannot positively name Workers Free. A loopback local provider is prepared. No runtime, model download, or live request.
 - Milestone 005F: Gemini consent and the single free-tier request are prepared. They stay unsent until the owner registers an Android OAuth client and a looked-up project has billing disabled. Local traffic uses adb reverse. Cleartext stays off.
 - Milestone 005G: Android AuthorizationClient can obtain a read-only token. Metadata and one free-tier generation run only after in-app confirmation, key binding, and billingEnabled false. No live response has been received until the owner finishes Google configuration.
+- Milestone 006A: The Council can run an assisted discussion from stored responses. Participant requests, objections, and the recorded synthesis do not contact a provider.
 
 ## Next
 
-The owner registers the Android OAuth client, saves the Gemini API key in the app, confirms the billing check, and then confirms the one free-tier question.
+Gemini account setup can be finished later. Council work continues with imported responses until a verified free provider is authorized.
 
 ## Later
 

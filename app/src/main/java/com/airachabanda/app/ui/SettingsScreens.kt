@@ -196,7 +196,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.5.5. Free chat is assisted. Gemini sends a metadata check or one free-tier request only after you confirm it here. Local inference is not installed.")
+                Text("Version 0.6.0. Free chat is assisted. Council discussion uses imported responses. Gemini stays behind in-app confirmation. Local inference is not installed.")
             }
         }
     }

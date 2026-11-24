@@ -83,6 +83,9 @@ object CritiquePrompt {
             appendLine("Try to disprove those conclusions. Name unsupported assumptions, factual errors, mathematical errors, logical inconsistencies, missing context, counterexamples, and weak or contradictory citations.")
             appendLine("Propose alternative explanations only when the material supports them.")
             appendLine("State which objections remain unresolved. Do not assign a confidence percentage.")
+            appendLine("If you find a real objection, write: OBJECTION category=CATEGORY claim=\"quoted claim\"")
+            appendLine("On the next line write explanation: and the objection. Categories are FACTUAL_ERROR, MATHEMATICAL_ERROR, UNSUPPORTED_ASSUMPTION, LOGICAL_INCONSISTENCY, MISSING_CONTEXT, COUNTEREXAMPLE, WEAK_CITATION, and ALTERNATIVE_EXPLANATION.")
+            appendLine("If no real objection is present, say that no objection was found. Do not invent one.")
             appendLine()
             material.forEach { message ->
                 val author = message.providerId?.name ?: message.source.name

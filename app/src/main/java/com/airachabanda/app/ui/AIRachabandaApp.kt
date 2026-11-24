@@ -308,6 +308,9 @@ private fun CouncilRoute(
         onPause = { conversationId?.let { model.pause(it, notice) } },
         onResume = { conversationId?.let { model.resume(it, notice) } },
         onStop = { conversationId?.let { model.stop(it, notice) } },
+        onAddContext = { text, invalidate -> conversationId?.let { model.addContext(it, text, invalidate, notice) } },
+        onFollowUp = { text -> conversationId?.let { model.requestFollowUp(it, text, notice) } },
+        onAnotherReview = { conversationId?.let { model.requestAnotherReview(it, notice) } },
         onCopy = { text -> notice(ExternalLinks.copy(application, "AI Rachabanda prompt", text)) },
         onCopyAndOpen = { task ->
             val conversation = conversationId ?: return@CouncilScreen

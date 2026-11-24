@@ -19,6 +19,10 @@ data class ProtocolRequest(
     val body: String,
     val targetId: String? = null,
     val requestedRequests: Int = 0,
+    val depth: Int = 0,
+    val recipientParticipantId: String? = null,
+    val purpose: String = "",
+    val expectedOutput: String = "",
 )
 
 data class ProtocolResult(
@@ -53,6 +57,8 @@ object CouncilProtocol {
         actorRoles: Set<String>,
         requestBudget: Int,
         requestsConsumed: Int,
+        duplicate: Boolean = false,
+        recipientFound: Boolean = true,
     ): ProtocolDecision {
         val state = runCatching { SessionState.valueOf(sessionState) }.getOrNull()
         if (state == null || state in SessionTransitions.terminal || state == SessionState.PAUSED) {
@@ -60,6 +66,16 @@ object CouncilProtocol {
         }
         if (!actorFound) return ProtocolDecision(false, "The actor is not a participant in this session.")
         if (request.body.isBlank()) return ProtocolDecision(false, "The action needs text supplied by the caller.")
+        if (DiscussionExchange.forbidden(request.body)) {
+            return ProtocolDecision(false, "The request tried to override billing, security, privacy, or the request budget. It was rejected.")
+        }
+        if (request.depth > DiscussionExchange.MAX_DEPTH) {
+            return ProtocolDecision(false, "Recursive delegation was rejected.")
+        }
+        if (duplicate) return ProtocolDecision(false, "This request repeats an open delegation.")
+        if (!request.recipientParticipantId.isNullOrBlank() && !recipientFound) {
+            return ProtocolDecision(false, "The recipient is not a participant in this session.")
+        }
         if (request.requestedRequests < 0) return ProtocolDecision(false, "A request cannot expand the budget.")
         val remaining = requestBudget - requestsConsumed
         if (request.requestedRequests > remaining) {

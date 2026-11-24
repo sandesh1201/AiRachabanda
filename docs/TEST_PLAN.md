@@ -135,6 +135,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - One generation is sent only after billing is revalidated as false. A second request in the same budget is not sent.
 - A wrong numeric answer is recorded as wrong. A rate limit does not retry. Logs and summaries omit the key and token.
 
+## Milestone 006A checks
+
+- A quick question creates research tasks and does not create a critique task. Each initial prompt withholds other participants' answers.
+- A delegation that tries to override billing, names an unknown recipient, repeats itself, or exceeds delegation depth is rejected.
+- An imported critique creates an objection only when it quotes a stored claim. Two stored claims both appear in the recorded synthesis. No source is invented.
+- A user correction cancels open follow-up work. A cancelled task cannot add a claim. Pause and the recorded request survive a process restart.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

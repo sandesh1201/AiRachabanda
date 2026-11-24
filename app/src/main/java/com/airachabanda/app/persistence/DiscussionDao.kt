@@ -53,6 +53,9 @@ interface DiscussionDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertEvidence(entity: EvidenceReferenceEntity)
 
+    @Query("SELECT * FROM evidence_references WHERE claimId IN (:claimIds)")
+    suspend fun evidenceFor(claimIds: List<String>): List<EvidenceReferenceEntity>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertObjection(entity: ObjectionEntity)
 

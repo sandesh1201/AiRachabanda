@@ -123,6 +123,27 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { repository.addUserMessage(conversationId, body) }
     }
 
+    fun addContext(conversationId: String, text: String, invalidateOpenWork: Boolean, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.addContext(conversationId, text, invalidateOpenWork))
+            refresh()
+        }
+    }
+
+    fun requestFollowUp(conversationId: String, instruction: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.requestFollowUp(conversationId, instruction))
+            refresh()
+        }
+    }
+
+    fun requestAnotherReview(conversationId: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(workflow.requestAnotherReview(conversationId))
+            refresh()
+        }
+    }
+
     fun start(conversationId: String, question: String, mode: ResearchMode, selected: Set<ProviderId>, onResult: (String) -> Unit) {
         viewModelScope.launch {
             onResult(workflow.start(conversationId, question, mode, maxRounds.value, selected))

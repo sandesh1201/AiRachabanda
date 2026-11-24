@@ -137,16 +137,13 @@ class OrchestrationEngine(
             return@withLock snapshot(sessionId)
         }
         val capabilities = start.requiredCapabilities.toMutableSet()
-        val assistedAvailable = eligible.any { it.assisted }
         when (start.mode) {
             ResearchMode.STANDARD -> capabilities += RoleAssignment.CRITIQUE
             ResearchMode.DEEP_RESEARCH -> {
                 capabilities += RoleAssignment.CRITIQUE
                 capabilities += RoleAssignment.VERIFICATION
             }
-            ResearchMode.QUICK -> if (assistedAvailable || start.requestBudget > 0) {
-                capabilities += RoleAssignment.CRITIQUE
-            }
+            ResearchMode.QUICK -> Unit
             ResearchMode.CUSTOM -> Unit
         }
         val grants = RoleAssignment.assign(
@@ -159,19 +156,33 @@ class OrchestrationEngine(
         )
         persistParticipants(sessionId, eligible, grants)
         openRound(sessionId, 1)
+        val userContext = council.messages(start.conversationId)
+            .filter { it.source == MessageSource.USER.name }
+            .map { it.body }
+        val researchPrompt = IndependentBrief.research(question, userContext)
         grants.filter { it.role == ParticipantRole.RESEARCHER }.forEach { grant ->
             val participant = participantFor(sessionId, grant.providerId)
             createTask(
                 participant = participant,
                 role = ParticipantRole.RESEARCHER,
                 kind = KIND_RESEARCH,
-                prompt = question,
+                prompt = researchPrompt,
                 round = 1,
                 targetId = null,
             )
         }
         enterCollection(sessionId)
         pump(sessionId)
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = start.conversationId,
+                providerId = null,
+                type = "DISCUSSION_STARTED",
+                summary = "Discussion started in ${start.mode.name}. No provider has been contacted.",
+                createdAtEpochMs = clock(),
+            ),
+        )
         snapshot(sessionId)
     }
 
@@ -235,6 +246,7 @@ class OrchestrationEngine(
                     createdAtEpochMs = now,
                 ),
             )
+            recordStructuredNotes(sessionId, task, text)
         }
         council.insertEvent(
             WorkflowEventEntity(
@@ -582,6 +594,11 @@ class OrchestrationEngine(
             ?: return@withLock ProtocolResult(false, "Session not found.", null)
         val actor = discussion.participants(session.id).firstOrNull { it.id == request.actorParticipantId }
         val roles = actor?.let { discussion.roles(it.id).map { role -> role.role }.toSet() }.orEmpty()
+        val people = discussion.participants(session.id)
+        val duplicate = discussion.protocolActions(session.id).any {
+            it.accepted && it.actorParticipantId == request.actorParticipantId && it.action == request.action.name &&
+                it.targetId == request.targetId && it.body == request.body.trim()
+        }
         val decision = CouncilProtocol.validate(
             request = request,
             sessionState = session.state,
@@ -589,6 +606,8 @@ class OrchestrationEngine(
             actorRoles = roles,
             requestBudget = session.requestBudget,
             requestsConsumed = session.requestsConsumed,
+            duplicate = duplicate,
+            recipientFound = request.recipientParticipantId.isNullOrBlank() || people.any { it.id == request.recipientParticipantId },
         )
         discussion.insertProtocol(
             com.airachabanda.app.persistence.ProtocolActionEntity(
@@ -600,6 +619,16 @@ class OrchestrationEngine(
                 body = request.body.trim(),
                 accepted = decision.accepted,
                 reason = decision.reason,
+                createdAtEpochMs = clock(),
+            ),
+        )
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                providerId = actor?.providerId,
+                type = if (decision.accepted) "PARTICIPANT_REQUEST" else "PARTICIPANT_REQUEST_REJECTED",
+                summary = "${request.action.name} ${if (decision.accepted) "accepted" else "rejected"}. ${decision.reason}",
                 createdAtEpochMs = clock(),
             ),
         )
@@ -839,7 +868,31 @@ class OrchestrationEngine(
     }
 
     private suspend fun progressReassessment(session: ResearchSessionEntity): Boolean {
-        val unresolved = discussion.objections(session.id).any { it.resolution in UNRESOLVED }
+        val objections = discussion.objections(session.id)
+        val explanations = objections.map { it.explanation.trim() }
+        val repeated = explanations.size != explanations.toSet().size
+        val unresolved = objections.any { it.resolution in UNRESOLVED }
+        if (repeated) {
+            if (allRoles(session.id).any { it.role == ParticipantRole.FINAL_SYNTHESIZER.name }) {
+                ensureSynthesisTask(fresh(session.id))
+                move(session.id, SessionState.SYNTHESIS, DiscussionStop.assess(
+                    cancelled = false,
+                    deadlinePassed = false,
+                    reviewRound = session.reviewRound,
+                    roundLimit = session.roundLimit,
+                    remainingAutomatedBudget = 1,
+                    automatedWorkStillOpen = false,
+                    repeatedArgument = true,
+                    researchComplete = true,
+                    critiqueRequired = true,
+                    critiqueComplete = true,
+                    materialDisagreement = unresolved,
+                ).note)
+            } else {
+                move(session.id, SessionState.COMPLETED, "A repeated argument stopped the discussion. Unresolved objections are preserved.")
+            }
+            return true
+        }
         if (unresolved && session.reviewRound < session.roundLimit) {
             val next = session.reviewRound + 1
             setReviewRound(session.id, next)
@@ -1227,6 +1280,103 @@ class OrchestrationEngine(
     private fun expired(session: ResearchSessionEntity): Boolean {
         val deadline = session.deadlineEpochMs ?: return false
         return clock() > deadline
+    }
+
+    suspend fun addUserInstruction(sessionId: String, text: String, invalidateOpenWork: Boolean): SessionSnapshot = mutex.withLock {
+        val instruction = text.trim()
+        require(instruction.isNotEmpty()) { "A user instruction is required." }
+        val session = fresh(sessionId)
+        val now = clock()
+        council.insertMessage(
+            MessageEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                providerId = null,
+                source = MessageSource.USER.name,
+                body = instruction,
+                roundNumber = session.reviewRound.coerceAtLeast(1),
+                createdAtEpochMs = now,
+            ),
+        )
+        if (invalidateOpenWork) {
+            council.tasksForSession(sessionId)
+                .filter { it.state in OPEN_TASKS && it.kind in setOf(KIND_FOLLOW_UP, KIND_RESEARCH) }
+                .forEach { council.updateTaskState(it.id, AssistedTaskState.CANCELLED.name, now) }
+        }
+        council.insertEvent(
+            WorkflowEventEntity(
+                id = ids(),
+                conversationId = session.conversationId,
+                providerId = null,
+                type = "USER_INSTRUCTION",
+                summary = if (invalidateOpenWork) {
+                    "The user corrected the discussion. Open research tasks were cancelled and cannot change the final answer."
+                } else {
+                    "The user added information to this discussion. Earlier completed work was kept."
+                },
+                createdAtEpochMs = now,
+            ),
+        )
+        snapshot(sessionId)
+    }
+
+    private suspend fun recordStructuredNotes(sessionId: String, task: ResearchTaskEntity, text: String) {
+        val claims = discussion.claims(sessionId).map { it.id to it.statement }
+        val now = clock()
+        if (task.kind == KIND_CRITIQUE) {
+            ObjectionExtractor.extract(text).forEach { found ->
+                val claimId = ObjectionExtractor.matchingClaim(found.claimFragment, claims) ?: return@forEach
+                val author = task.participantId ?: return@forEach
+                discussion.insertObjection(
+                    ObjectionEntity(
+                        id = ids(),
+                        sessionId = sessionId,
+                        targetClaimId = claimId,
+                        authorParticipantId = author,
+                        userDeclaredModelId = ModelIdentity.UNKNOWN,
+                        verifiedModelId = ModelIdentity.UNKNOWN,
+                        roundNumber = task.roundNumber,
+                        category = found.category.name,
+                        severity = com.airachabanda.app.core.model.ObjectionSeverity.MEDIUM.name,
+                        explanation = found.explanation,
+                        supportingEvidence = "",
+                        requestedVerification = "Check this objection against the imported material.",
+                        resolution = ResolutionStatus.OPEN.name,
+                        createdAtEpochMs = now,
+                    ),
+                )
+            }
+        }
+        if (task.kind == KIND_VERIFICATION) {
+            val verifier = task.participantId ?: return
+            VerificationExtractor.extract(text).forEach { found ->
+                val claimId = ObjectionExtractor.matchingClaim(found.claimFragment, claims) ?: return@forEach
+                discussion.insertVerification(
+                    VerificationResultEntity(
+                        id = ids(),
+                        sessionId = sessionId,
+                        targetClaimId = claimId,
+                        objectionId = null,
+                        verifierParticipantId = verifier,
+                        outcome = found.outcome.name,
+                        note = "Recorded from the imported verification text. This is not a live provider result.",
+                        createdAtEpochMs = now,
+                    ),
+                )
+            }
+        }
+        if (task.kind == KIND_SYNTHESIS) {
+            discussion.insertConclusion(
+                com.airachabanda.app.persistence.ConclusionEntity(
+                    id = ids(),
+                    sessionId = sessionId,
+                    kind = com.airachabanda.app.core.model.ConclusionKind.FINAL.name,
+                    body = "Imported synthesis. This text was supplied for this discussion and is not a live provider response.\n$text",
+                    roundNumber = task.roundNumber,
+                    createdAtEpochMs = now,
+                ),
+            )
+        }
     }
 
     private suspend fun snapshot(sessionId: String): SessionSnapshot {
