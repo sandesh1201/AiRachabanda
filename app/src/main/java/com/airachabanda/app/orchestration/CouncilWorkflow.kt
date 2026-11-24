@@ -272,6 +272,7 @@ class CouncilWorkflow(
         mode: ResearchMode,
         roundLimit: Int,
         selectedProviders: Set<ProviderId>,
+        custom: DiscussionBudgets? = null,
     ): String {
         val existing = council.latestSession(conversationId)
         if (existing != null && SessionState.valueOf(existing.state) !in SessionTransitions.terminal) {
@@ -283,16 +284,26 @@ class CouncilWorkflow(
             ResearchMode.STANDARD, ResearchMode.CUSTOM -> QuestionComplexity.MODERATE
         }
         val excluded = ProviderRegistry.all.map { it.id }.filter { it !in selectedProviders }.toSet()
+        val budgets = DiscussionBudgets.resolve(
+            mode,
+            custom ?: DiscussionBudgets.standard().copy(rounds = roundLimit.coerceIn(1, DiscussionBudgets.MAX_ROUNDS)),
+        )
+        val capabilities = if (budgets.verificationRequired) setOf(RoleAssignment.VERIFICATION) else emptySet()
         val snapshot = engine.acceptQuestion(
             ResearchStart(
                 conversationId = conversationId,
                 question = question,
                 mode = mode,
                 complexity = complexity,
-                roundLimit = roundLimit.coerceIn(1, 8),
-                requestBudget = roundLimit.coerceIn(0, 8),
-                deadlineEpochMs = clock() + SESSION_LIMIT_MS,
+                requiredCapabilities = capabilities,
+                roundLimit = budgets.rounds,
+                requestBudget = budgets.aiRequests,
+                deadlineEpochMs = clock() + budgets.deadlineMinutes * 60_000L,
                 excludedProviders = excluded,
+                concurrencyLimit = budgets.concurrency,
+                delegationDepthLimit = budgets.delegationDepth,
+                researchSources = budgets.researchSources,
+                researchRequests = budgets.researchRequests,
             ),
         )
         val assisted = inspect(conversationId).assistedOnly
@@ -301,7 +312,7 @@ class CouncilWorkflow(
         } else {
             ""
         }
-        return "Discussion started. Stage: ${stageLabel(snapshot.state.name)}. Automated budget ${snapshot.requestsConsumed} of ${roundLimit.coerceIn(0, 8)}. Provider quotas are unknown. Session limit is 60 minutes.$assistance ${snapshot.statusNote}"
+        return "Discussion started. Stage: ${stageLabel(snapshot.state.name)}. Automated budget ${snapshot.requestsConsumed} of ${budgets.aiRequests}. Discussion rounds ${budgets.rounds}. Provider quotas are unknown. Session limit is ${budgets.deadlineMinutes} minutes.$assistance ${snapshot.statusNote}"
     }
 
     suspend fun prepareResearchPrompt(conversationId: String, providerId: ProviderId, question: String, mode: ResearchMode, roundLimit: Int, selected: Set<ProviderId>): String {

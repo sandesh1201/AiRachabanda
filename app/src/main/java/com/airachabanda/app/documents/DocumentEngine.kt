@@ -35,7 +35,8 @@ object DocumentEngine {
         if (title.any { it.code in 32..126 } && !text.contains(title.take(40))) {
             return GenerationOutcome("FAILED", ByteArray(0), "The rendered file did not contain the document title. It was not saved.")
         }
-        val notes = document.limitations.joinToString(" ")
+        val pdfOmitted = if (format == OutputFormat.PDF) PdfText.omitted(title + "\n" + request.body) else ""
+        val notes = listOf(document.limitations.joinToString(" "), pdfOmitted).filter { it.isNotBlank() }.joinToString(" ")
         val visual = if (format == OutputFormat.PDF) {
             "PDF text was read back from the file. Page layout uses the local PDF writer. Microsoft Office was not used."
         } else if (format == OutputFormat.DOCX || format == OutputFormat.XLSX || format == OutputFormat.PPTX) {
@@ -43,7 +44,7 @@ object DocumentEngine {
         } else {
             "The text file was read back as ${format.label}."
         }
-        val status = if (notes.contains("was not rendered") || notes.contains("speaker notes")) "PARTIAL" else "GENERATED"
+        val status = if (notes.contains("was not rendered") || notes.contains("speaker notes") || pdfOmitted.isNotBlank()) "PARTIAL" else "GENERATED"
         return GenerationOutcome(status, bytes, listOf(structural.report, visual, notes).filter { it.isNotBlank() }.joinToString(" "))
     }
 

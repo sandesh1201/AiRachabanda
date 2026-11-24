@@ -69,7 +69,7 @@ fun SettingsRoot(
             "zerocost" to "Zero-cost policy",
         ),
         "Appearance" to listOf("appearance" to "Light, dark, and system"),
-        "Discussion defaults" to listOf("research" to "Default mode and round limit"),
+        "Discussion defaults" to listOf("research" to "Rounds, requests, sources, and deadline"),
         "Research preferences" to listOf("research" to "Public research stays consent-based"),
         "Privacy and security" to listOf("privacy" to "On-device storage and redaction"),
         "Notifications" to listOf("notifications" to "Discussion notification"),
@@ -125,6 +125,9 @@ fun SettingsDetail(
     enabledProviders: Set<ProviderId>,
     onToggleParticipant: (ProviderId, Boolean) -> Unit,
     contentPadding: PaddingValues,
+    limits: com.airachabanda.app.orchestration.DiscussionBudgets = com.airachabanda.app.orchestration.DiscussionBudgets.standard(),
+    onSaveLimits: (com.airachabanda.app.orchestration.DiscussionBudgets) -> Unit = {},
+    storageNote: String = "",
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding).padding(16.dp),
@@ -160,7 +163,7 @@ fun SettingsDetail(
                 Text("Zero-Cost Mode", style = MaterialTheme.typography.headlineSmall)
                 Text("Zero-Cost Mode is on and mandatory in this version. There is no control to enable paid inference, credit purchases, or an API-key fallback.")
             }
-            "research" -> ResearchSettings(researchMode, maxRounds, onResearchMode, onMaxRounds)
+            "research" -> ResearchSettings(researchMode, limits, onResearchMode, onSaveLimits)
             "notifications" -> {
                 Text("Notifications", style = MaterialTheme.typography.headlineSmall)
                 Text("An active discussion can show a private notification with Pause, Resume, Stop, and Open. The lock screen uses a short public line and does not show the question. Android can still end the process after a force stop or reboot. The discussion does not start again by itself.")
@@ -185,7 +188,7 @@ fun SettingsDetail(
                 Text("Conversations stay on this device. The app does not collect provider passwords or session cookies. Logs redact tokens and API keys. External links use HTTPS. An OpenRouter key, if you save one, stays in Android Keystore and is not shown again.")
                 Text(ClaudeAssistedLinks.STATUS_SUMMARY)
             }
-            "storage" -> StorageSettings(onDelete)
+            "storage" -> StorageSettings(onDelete, storageNote)
             "openrouter" -> OpenRouterSettings(openRouterStatus, onSaveOpenRouter, onRemoveOpenRouter, onConfirmOpenRouterMetadata)
             "cloudflare" -> DirectProviderSettings(
                 title = "Cloudflare Workers AI",
@@ -209,7 +212,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.12.0. Free chat is assisted. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested.")
+                Text("Version 0.13.0. Free chat is assisted. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
             }
         }
     }
@@ -286,14 +289,19 @@ private fun OpenRouterSettings(
 @Composable
 private fun ResearchSettings(
     researchMode: ResearchMode,
-    maxRounds: Int,
+    limits: com.airachabanda.app.orchestration.DiscussionBudgets,
     onResearchMode: (ResearchMode) -> Unit,
-    onMaxRounds: (Int) -> Unit,
+    onSaveLimits: (com.airachabanda.app.orchestration.DiscussionBudgets) -> Unit,
 ) {
-    var rounds by rememberSaveable(maxRounds) { mutableIntStateOf(maxRounds) }
+    var draft by remember(limits) { mutableStateOf(limits) }
+    val active = com.airachabanda.app.orchestration.DiscussionBudgets.resolve(researchMode, draft)
     Text("Discussion defaults", style = MaterialTheme.typography.headlineSmall)
-    Text("The selected mode is the default for a new conversation. The round limit is the automated request budget when you start a discussion. Saving these values does not contact a provider. Zero-cost rules stay on in every mode.")
+    Text("The selected mode is the default for a new conversation. Quick, Standard, and Deep Research use fixed limits. Custom uses the values you save, and those values are checked before a task or a source is opened. Saving does not contact a provider and does not raise a budget. Zero-cost rules stay on in every mode.")
     Text(ModeGuide.summary(researchMode), style = MaterialTheme.typography.bodySmall)
+    Text(
+        "This mode uses ${active.rounds} rounds, ${active.aiRequests} AI requests, ${active.researchRequests} research requests, ${active.researchSources} sources, concurrency ${active.concurrency}, delegation depth ${active.delegationDepth}, and a ${active.deadlineMinutes} minute deadline.",
+        style = MaterialTheme.typography.bodySmall,
+    )
     ResearchMode.entries.forEach { mode ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = researchMode == mode, onClick = { onResearchMode(mode) })
@@ -307,19 +315,37 @@ private fun ResearchSettings(
             )
         }
     }
-    Text("Maximum rounds: $rounds")
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = { rounds = (rounds - 1).coerceAtLeast(1) }) { Text("Fewer") }
-        TextButton(onClick = { rounds = (rounds + 1).coerceAtMost(8) }) { Text("More") }
-        Button(onClick = { onMaxRounds(rounds) }) { Text("Save rounds") }
+    if (researchMode == ResearchMode.CUSTOM) {
+        LimitRow("Maximum discussion rounds", draft.rounds, 1, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_ROUNDS) { draft = draft.copy(rounds = it) }
+        LimitRow("Maximum AI requests", draft.aiRequests, 0, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_AI_REQUESTS) { draft = draft.copy(aiRequests = it) }
+        LimitRow("Maximum research requests", draft.researchRequests, 0, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_RESEARCH_REQUESTS) { draft = draft.copy(researchRequests = it) }
+        LimitRow("Maximum research sources", draft.researchSources, 1, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_SOURCES) { draft = draft.copy(researchSources = it) }
+        LimitRow("Concurrent task limit", draft.concurrency, 1, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_CONCURRENCY) { draft = draft.copy(concurrency = it) }
+        LimitRow("Delegation depth", draft.delegationDepth, 1, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_DEPTH) { draft = draft.copy(delegationDepth = it) }
+        LimitRow("Discussion deadline, minutes", draft.deadlineMinutes, 1, com.airachabanda.app.orchestration.DiscussionBudgets.MAX_DEADLINE_MINUTES) { draft = draft.copy(deadlineMinutes = it) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = draft.verificationRequired, onCheckedChange = { draft = draft.copy(verificationRequired = it) })
+            Text("Require verification")
+        }
+        Button(onClick = { onSaveLimits(draft.clamped()) }) { Text("Save custom limits") }
     }
 }
 
 @Composable
-private fun StorageSettings(onDelete: () -> Unit) {
+private fun LimitRow(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
+    Text("$label: $value")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = { onChange((value - 1).coerceAtLeast(min)) }) { Text("Fewer") }
+        TextButton(onClick = { onChange((value + 1).coerceAtMost(max)) }) { Text("More") }
+    }
+}
+
+@Composable
+private fun StorageSettings(onDelete: () -> Unit, storageNote: String) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     Text("Storage", style = MaterialTheme.typography.headlineSmall)
-    Text("Delete conversations, imported responses, workflow events, and declared account preferences stored on this device.")
+    Text(storageNote.ifBlank { "Local file sizes have not been measured yet." })
+    Text("Delete conversations, imported responses, workflow events, and declared account preferences stored on this device. Deleting one conversation also removes its imported files and generated files. It does not delete other conversations.")
     Button(onClick = { confirm = true }) { Text("Delete local data") }
     if (confirm) {
         AlertDialog(

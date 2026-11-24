@@ -26,6 +26,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 010: Local PDF, DOCX, XLSX, PPTX, CSV, TXT, Markdown, and JSON generation. Files stay on the device. No AI inference request is added.
 - Milestone 011: Provider faults, task reassignment, and pause, resume, stop, and finish controls. Room schema version 9. No live inference request is added.
 - Milestone 012: Material 3 light, dark, and system appearance, a home composer, and the Council as the conversation. Schema version 9 is unchanged. No live inference request is added.
+- Milestone 013: Separate discussion limits, pinned public-research connections, and PDF characters that the embedded font cannot draw are reported. Schema version 9 is unchanged. No live inference request is added. OCR is not installed.
 
 ## Next
 

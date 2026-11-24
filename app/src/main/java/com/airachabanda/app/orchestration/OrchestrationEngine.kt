@@ -82,6 +82,10 @@ data class ResearchStart(
     val roundLimit: Int,
     val requestBudget: Int,
     val deadlineEpochMs: Long? = null,
+    val concurrencyLimit: Int? = null,
+    val delegationDepthLimit: Int? = null,
+    val researchSources: Int = 3,
+    val researchRequests: Int = 2,
     val knownQuotas: Map<ProviderId, Int?> = emptyMap(),
     val excludedProviders: Set<ProviderId> = emptySet(),
 )
@@ -162,6 +166,10 @@ class OrchestrationEngine(
                 deadlineEpochMs = start.deadlineEpochMs,
                 nowEpochMs = now,
                 consequences = start.mode == ResearchMode.DEEP_RESEARCH,
+                researchSources = start.researchSources,
+                researchRequests = start.researchRequests,
+                concurrencyCap = start.concurrencyLimit,
+                depthCap = start.delegationDepthLimit,
             ),
         )
         discussion.updatePlan(
@@ -2105,6 +2113,14 @@ class OrchestrationEngine(
                 ?: return@withLock "The research connector is not one of the approved public services."
             val open = discussion.session(sessionId) ?: return@withLock "No discussion is open."
             researchBlocked(open)?.let { return@withLock it }
+            if (!consent) return@withLock "Consent is required before a query is sent. Nothing was transmitted."
+            val limits = DiscussionBudgets.fromNote(ResearchMode.valueOf(open.researchMode), open.planNote)
+            val attempts = council.eventsForConversation(open.conversationId).count {
+                it.type == "RESEARCH_RETRIEVED" || it.type == "RESEARCH_FAILED"
+            }
+            if (attempts >= limits.researchRequests) {
+                return@withLock "The research request budget for this discussion is exhausted. No further source was requested."
+            }
             finishRetrieval(sessionId, claimId) { resolved, fingerprints, stored ->
                 ResearchEngine.runConnector(
                     connector = connector,
@@ -2114,6 +2130,7 @@ class OrchestrationEngine(
                     claimId = resolved,
                     existingFingerprints = fingerprints,
                     storedSources = stored,
+                    sourceBudget = limits.researchSources,
                     transport = researchTransport,
                     resolver = nameResolver,
                 )
@@ -2125,6 +2142,14 @@ class OrchestrationEngine(
         mutex.withLock {
             val open = discussion.session(sessionId) ?: return@withLock "No discussion is open."
             researchBlocked(open)?.let { return@withLock it }
+            if (!consent) return@withLock "Consent is required before a URL is sent. Nothing was transmitted."
+            val limits = DiscussionBudgets.fromNote(ResearchMode.valueOf(open.researchMode), open.planNote)
+            val attempts = council.eventsForConversation(open.conversationId).count {
+                it.type == "RESEARCH_RETRIEVED" || it.type == "RESEARCH_FAILED"
+            }
+            if (attempts >= limits.researchRequests) {
+                return@withLock "The research request budget for this discussion is exhausted. No further source was requested."
+            }
             finishRetrieval(sessionId, claimId) { resolved, fingerprints, stored ->
                 ResearchEngine.runUserUrl(
                     url = url,
@@ -2133,6 +2158,7 @@ class OrchestrationEngine(
                     claimId = resolved,
                     existingFingerprints = fingerprints,
                     storedSources = stored,
+                    sourceBudget = limits.researchSources,
                     transport = researchTransport,
                     resolver = nameResolver,
                 )

@@ -5,9 +5,14 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
 import javax.xml.parsers.DocumentBuilderFactory
 
 enum class ResearchConnector {
@@ -41,6 +46,8 @@ object ResearchLimits {
     const val CONNECT_TIMEOUT_MS = 5_000
     const val READ_TIMEOUT_MS = 8_000
     const val MAX_SOURCES_PER_SESSION = 3
+    const val ABSOLUTE_MAX_SOURCES = 8
+    const val CANDIDATES_PER_REQUEST = 5
     const val EXCERPT_CHARS = 500
     const val USER_AGENT = "AIRachabanda/0.8 (on-device research client; no remote account)"
 }
@@ -120,11 +127,11 @@ object ResearchConnectors {
         val encoded = URLEncoder.encode(term, Charsets.UTF_8.name())
         return when (connector) {
             ResearchConnector.WIKIMEDIA ->
-                "https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=1&gsrsearch=$encoded&prop=extracts%7Cinfo&inprop=url&exintro=1&explaintext=1&redirects=1"
+                "https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=${ResearchLimits.CANDIDATES_PER_REQUEST}&gsrsearch=$encoded&prop=extracts%7Cinfo&inprop=url&exintro=1&explaintext=1&redirects=1"
             ResearchConnector.ARXIV ->
-                "https://export.arxiv.org/api/query?search_query=all:$encoded&start=0&max_results=1"
+                "https://export.arxiv.org/api/query?search_query=all:$encoded&start=0&max_results=${ResearchLimits.CANDIDATES_PER_REQUEST}"
             ResearchConnector.FEDERAL_REGISTER ->
-                "https://www.federalregister.gov/api/v1/documents.json?per_page=1&conditions%5Bterm%5D=$encoded"
+                "https://www.federalregister.gov/api/v1/documents.json?per_page=${ResearchLimits.CANDIDATES_PER_REQUEST}&conditions%5Bterm%5D=$encoded"
         }
     }
 
@@ -151,107 +158,139 @@ object ResearchConnectors {
         val excerpt: String,
     )
 
-    fun parse(connector: ResearchConnector, body: String, requestedUrl: String): ParsedSource? = when (connector) {
-        ResearchConnector.WIKIMEDIA -> parseWikipedia(body, requestedUrl)
-        ResearchConnector.ARXIV -> parseArxiv(body, requestedUrl)
-        ResearchConnector.FEDERAL_REGISTER -> parseFederalRegister(body, requestedUrl)
+    fun parse(connector: ResearchConnector, body: String, requestedUrl: String, query: String = ""): ParsedSource? {
+        val candidates = when (connector) {
+            ResearchConnector.WIKIMEDIA -> parseWikipedia(body, requestedUrl)
+            ResearchConnector.ARXIV -> parseArxiv(body, requestedUrl)
+            ResearchConnector.FEDERAL_REGISTER -> parseFederalRegister(body, requestedUrl)
+        }
+        return SourceRanking.choose(query, candidates)
     }
 
-    private fun parseWikipedia(body: String, requestedUrl: String): ParsedSource? {
-        val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
-        val pages = root.optJSONObject("query")?.optJSONObject("pages") ?: return null
-        val key = pages.keys().asSequence().firstOrNull { it != "-1" } ?: return null
-        val page = pages.optJSONObject(key) ?: return null
-        val title = page.optString("title").trim()
-        val url = page.optString("fullurl").trim()
-        val extract = page.optString("extract").trim()
-        if (title.isBlank() || !url.startsWith("https://")) return null
-        return ParsedSource(
-            sourceId = "wikimedia:$key",
-            canonical = url,
-            original = requestedUrl,
-            title = title,
-            publisher = "Wikimedia Foundation",
-            author = "",
-            published = "",
-            excerpt = extract,
-        )
+    private fun parseWikipedia(body: String, requestedUrl: String): List<ParsedSource> {
+        val root = runCatching { JSONObject(body) }.getOrNull() ?: return emptyList()
+        val pages = root.optJSONObject("query")?.optJSONObject("pages") ?: return emptyList()
+        val found = mutableListOf<ParsedSource>()
+        val keys = pages.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key == "-1") continue
+            val page = pages.optJSONObject(key) ?: continue
+            val title = page.optString("title").trim()
+            val url = page.optString("fullurl").trim()
+            val extract = page.optString("extract").trim()
+            if (title.isBlank() || !url.startsWith("https://")) continue
+            found += ParsedSource(
+                sourceId = "wikimedia:$key",
+                canonical = url,
+                original = requestedUrl,
+                title = title,
+                publisher = "Wikimedia Foundation",
+                author = "",
+                published = "",
+                excerpt = extract,
+            )
+        }
+        return found
     }
 
-    private fun parseArxiv(body: String, requestedUrl: String): ParsedSource? {
+    private fun parseArxiv(body: String, requestedUrl: String): List<ParsedSource> {
         val factory = DocumentBuilderFactory.newInstance()
         val secured = listOf(
             "http://apache.org/xml/features/disallow-doctype-decl" to true,
             "http://xml.org/sax/features/external-general-entities" to false,
             "http://xml.org/sax/features/external-parameter-entities" to false,
         ).all { (feature, enabled) -> runCatching { factory.setFeature(feature, enabled) }.isSuccess }
-        if (!secured) return null
+        if (!secured) return emptyList()
         factory.isExpandEntityReferences = false
         val document = runCatching {
             factory.newDocumentBuilder().parse(ByteArrayInputStream(body.toByteArray(Charsets.UTF_8)))
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: return emptyList()
         val entries = document.getElementsByTagName("entry")
-        if (entries.length == 0) return null
-        val entry = entries.item(0)
-        var title = ""
-        var id = ""
-        var published = ""
-        var summary = ""
-        val authors = mutableListOf<String>()
-        val children = entry.childNodes
-        for (index in 0 until children.length) {
-            val node = children.item(index)
-            when (node.nodeName.substringAfter(':')) {
-                "title" -> title = node.textContent.trim().replace(Regex("\\s+"), " ")
-                "id" -> id = node.textContent.trim()
-                "published" -> published = node.textContent.trim()
-                "summary" -> summary = node.textContent.trim().replace(Regex("\\s+"), " ")
-                "author" -> {
-                    val names = node.childNodes
-                    for (child in 0 until names.length) {
-                        if (names.item(child).nodeName.substringAfter(':') == "name") {
-                            authors += names.item(child).textContent.trim()
+        return (0 until entries.length).mapNotNull { index ->
+            val entry = entries.item(index)
+            var title = ""
+            var id = ""
+            var published = ""
+            var summary = ""
+            val authors = mutableListOf<String>()
+            val children = entry.childNodes
+            for (childIndex in 0 until children.length) {
+                val node = children.item(childIndex)
+                when (node.nodeName.substringAfter(':')) {
+                    "title" -> title = node.textContent.trim().replace(Regex("\\s+"), " ")
+                    "id" -> id = node.textContent.trim()
+                    "published" -> published = node.textContent.trim()
+                    "summary" -> summary = node.textContent.trim().replace(Regex("\\s+"), " ")
+                    "author" -> {
+                        val names = node.childNodes
+                        for (child in 0 until names.length) {
+                            if (names.item(child).nodeName.substringAfter(':') == "name") {
+                                authors += names.item(child).textContent.trim()
+                            }
                         }
                     }
                 }
             }
+            val canonical = if (id.startsWith("http://")) "https://" + id.removePrefix("http://") else id
+            if (title.isBlank() || !canonical.startsWith("https://")) return@mapNotNull null
+            ParsedSource(
+                sourceId = "arxiv:${canonical.substringAfterLast('/')}",
+                canonical = canonical,
+                original = requestedUrl,
+                title = title,
+                publisher = "arXiv",
+                author = authors.joinToString(", "),
+                published = published,
+                excerpt = summary,
+            )
         }
-        val canonical = if (id.startsWith("http://")) "https://" + id.removePrefix("http://") else id
-        if (title.isBlank() || !canonical.startsWith("https://")) return null
-        return ParsedSource(
-            sourceId = "arxiv:${canonical.substringAfterLast('/')}",
-            canonical = canonical,
-            original = requestedUrl,
-            title = title,
-            publisher = "arXiv",
-            author = authors.joinToString(", "),
-            published = published,
-            excerpt = summary,
+    }
+
+    private fun parseFederalRegister(body: String, requestedUrl: String): List<ParsedSource> {
+        val root = runCatching { JSONObject(body) }.getOrNull() ?: return emptyList()
+        val results = root.optJSONArray("results") ?: return emptyList()
+        return (0 until results.length()).mapNotNull { index ->
+            val item = results.optJSONObject(index) ?: return@mapNotNull null
+            val title = item.optString("title").trim()
+            val url = item.optString("html_url").trim()
+            val published = item.optString("publication_date").trim()
+            val excerpt = item.optString("abstract").trim().ifBlank { item.optString("title").trim() }
+            val agencies = item.optJSONArray("agencies")
+            val publisher = agencies?.optJSONObject(0)?.optString("name").orEmpty().trim()
+            if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
+            ParsedSource(
+                sourceId = "federal-register:${item.optString("document_number").ifBlank { url.substringAfterLast('/') }}",
+                canonical = url,
+                original = requestedUrl,
+                title = title,
+                publisher = publisher,
+                author = "",
+                published = published,
+                excerpt = excerpt,
+            )
+        }
+    }
+}
+
+object SourceRanking {
+    fun choose(query: String, candidates: List<ResearchConnectors.ParsedSource>): ResearchConnectors.ParsedSource? {
+        if (candidates.isEmpty()) return null
+        val terms = query.lowercase().split(Regex("\\s+")).filter { it.length > 2 }.toSet()
+        return candidates.maxWithOrNull(
+            compareBy<ResearchConnectors.ParsedSource> { relevance(it, terms) }
+                .thenByDescending { it.published }
+                .thenByDescending { it.publisher.isNotBlank() },
         )
     }
 
-    private fun parseFederalRegister(body: String, requestedUrl: String): ParsedSource? {
-        val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
-        val results = root.optJSONArray("results") ?: return null
-        if (results.length() == 0) return null
-        val item = results.optJSONObject(0) ?: return null
-        val title = item.optString("title").trim()
-        val url = item.optString("html_url").trim()
-        val published = item.optString("publication_date").trim()
-        val excerpt = item.optString("abstract").trim().ifBlank { item.optString("title").trim() }
-        val agencies = item.optJSONArray("agencies")
-        val publisher = agencies?.optJSONObject(0)?.optString("name").orEmpty().trim()
-        if (title.isBlank() || !url.startsWith("https://")) return null
-        return ParsedSource(
-            sourceId = "federal-register:${item.optString("document_number").ifBlank { url.substringAfterLast('/') }}",
-            canonical = url,
-            original = requestedUrl,
-            title = title,
-            publisher = publisher,
-            author = "",
-            published = published,
-            excerpt = excerpt,
-        )
+    private fun relevance(source: ResearchConnectors.ParsedSource, terms: Set<String>): Int {
+        if (terms.isEmpty()) return 0
+        val title = source.title.lowercase()
+        val excerpt = source.excerpt.lowercase()
+        val titleHits = terms.count { title.contains(it) }
+        val bodyHits = terms.count { excerpt.contains(it) }
+        return titleHits * 3 + bodyHits
     }
 }
 
@@ -338,11 +377,12 @@ object ResearchEngine {
         storedSources: Int,
         transport: ResearchTransport,
         resolver: (String) -> List<InetAddress>,
+        sourceBudget: Int = ResearchLimits.MAX_SOURCES_PER_SESSION,
     ): ResearchOutcome {
         if (!consent) {
             return ResearchOutcome(false, "Consent is required before a query is sent. Nothing was transmitted.", null, null)
         }
-        if (storedSources >= ResearchLimits.MAX_SOURCES_PER_SESSION) {
+        if (storedSources >= sourceBudget.coerceIn(1, ResearchLimits.ABSOLUTE_MAX_SOURCES)) {
             return ResearchOutcome(false, "The research budget for this discussion is exhausted. No further source was requested.", null, null)
         }
         val url = ResearchConnectors.requestUrl(connector, query)
@@ -358,6 +398,7 @@ object ResearchEngine {
             transport = transport,
             resolver = resolver,
             spacingMs = ResearchConnectors.spacingMs(connector),
+            query = query,
         )
     }
 
@@ -370,8 +411,9 @@ object ResearchEngine {
         storedSources: Int,
         transport: ResearchTransport,
         resolver: (String) -> List<InetAddress>,
+        sourceBudget: Int = ResearchLimits.MAX_SOURCES_PER_SESSION,
     ): ResearchOutcome {
-        if (storedSources >= ResearchLimits.MAX_SOURCES_PER_SESSION) {
+        if (storedSources >= sourceBudget.coerceIn(1, ResearchLimits.ABSOLUTE_MAX_SOURCES)) {
             return ResearchOutcome(false, "The research budget for this discussion is exhausted. No further source was requested.", null, null)
         }
         return retrieve(
@@ -385,6 +427,7 @@ object ResearchEngine {
             transport = transport,
             resolver = resolver,
             spacingMs = 1_000L,
+            query = "",
         )
     }
 
@@ -399,6 +442,7 @@ object ResearchEngine {
         transport: ResearchTransport,
         resolver: (String) -> List<InetAddress>,
         spacingMs: Long,
+        query: String,
     ): ResearchOutcome {
         if (!consent) return ResearchOutcome(false, "Consent is required before a URL is sent. Nothing was transmitted.", null, null)
         if (!ExecutionGate.allow(ExecutionIntent.RETRIEVE_APPROVED_SOURCE)) {
@@ -450,7 +494,7 @@ object ResearchEngine {
                 return ResearchOutcome(false, "The content type is not an accepted public page.", null, null)
             }
             val parsed = if (connector != null) {
-                ResearchConnectors.parse(connector, exchange.body, url)
+                ResearchConnectors.parse(connector, exchange.body, url, query)
             } else {
                 val page = PageText.readable(exchange.body)
                 if (page.excerpt.isBlank() && page.title.isBlank()) null else ResearchConnectors.ParsedSource(
@@ -490,7 +534,7 @@ object ResearchEngine {
                 claim = claimId.orEmpty(),
                 metadata = if (metadataKnown) "RECORDED" else "UNKNOWN",
             )
-            return ResearchOutcome(true, "A public source was retrieved. A successful response does not prove a claim.", record, parsed.canonical)
+            return ResearchOutcome(true, "A public source was retrieved. Ranking used title overlap, publication date, and publisher. Overlap is not claim support. A successful response does not prove a claim.", record, parsed.canonical)
         }
     }
 
@@ -517,39 +561,17 @@ class PublicHttp(
 ) : ResearchTransport {
     override fun exchange(url: String, maxBytes: Int): HttpExchange {
         if (cancelled()) return HttpExchange(0, null, "", "", false, "The retrieval was cancelled.")
-        val problem = DestinationPolicy.check(url) ?: run {
-            val host = URI(url).host
-            val addresses = runCatching { resolver(host) }.getOrElse {
-                return HttpExchange(0, null, "", "", false, "The host could not be resolved. Nothing was retrieved.")
-            }
-            if (!DestinationPolicy.addressesArePublic(addresses)) {
-                return HttpExchange(0, null, "", "", false, "The resolved address is not public. The connection was not opened.")
-            }
-            null
-        }
+        val problem = DestinationPolicy.check(url)
         if (problem != null) return HttpExchange(0, null, "", "", false, problem)
-        val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = false
-            connectTimeout = ResearchLimits.CONNECT_TIMEOUT_MS
-            readTimeout = ResearchLimits.READ_TIMEOUT_MS
-            setRequestProperty("User-Agent", ResearchLimits.USER_AGENT)
-            setRequestProperty("Accept", "application/json, application/atom+xml, text/html, text/plain")
-            setRequestProperty("Accept-Encoding", "identity")
+        val host = URI(url).host
+        val addresses = runCatching { resolver(host) }.getOrElse {
+            return HttpExchange(0, null, "", "", false, "The host could not be resolved. Nothing was retrieved.")
         }
-        return try {
-            if (cancelled()) return HttpExchange(0, null, "", "", false, "The retrieval was cancelled.")
-            connection.connect()
-            val status = connection.responseCode
-            val location = connection.getHeaderField("Location")
-            val type = connection.contentType.orEmpty().substringBefore(';').trim()
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val read = readCapped(stream, maxBytes)
-            HttpExchange(status, location, type, read.first, read.second, if (cancelled()) "The retrieval was cancelled." else null)
-        } catch (error: Exception) {
-            HttpExchange(0, null, "", "", false, "The retrieval failed before a page was stored.")
-        } finally {
-            connection.disconnect()
+        if (!DestinationPolicy.addressesArePublic(addresses)) {
+            return HttpExchange(0, null, "", "", false, "The resolved address is not public. The connection was not opened.")
         }
+        val address = addresses.first()
+        return PinnedHttps.exchange(url, host, address, maxBytes, cancelled)
     }
 
     private fun readCapped(stream: InputStream?, maxBytes: Int): Pair<String, Boolean> {
@@ -569,6 +591,138 @@ class PublicHttp(
             total += count
         }
         return String(output.toByteArray(), Charsets.UTF_8) to false
+    }
+}
+
+object PinnedHttps {
+    fun target(url: String, address: InetAddress): URI {
+        val uri = URI(url)
+        val literal = address.hostAddress ?: throw IllegalArgumentException("The address has no literal.")
+        val literalHost = if (literal.contains(':')) "[$literal]" else literal
+        val path = uri.rawPath?.ifBlank { "/" } ?: "/"
+        val query = uri.rawQuery?.let { "?$it" } ?: ""
+        return URI("https://$literalHost$path$query")
+    }
+
+    fun exchange(url: String, host: String, address: InetAddress, maxBytes: Int, cancelled: () -> Boolean): HttpExchange {
+        val uri = URI(url)
+        val path = (uri.rawPath?.ifBlank { "/" } ?: "/") + (uri.rawQuery?.let { "?$it" } ?: "")
+        val socket = SSLContext.getDefault().socketFactory.createSocket() as SSLSocket
+        return try {
+            socket.soTimeout = ResearchLimits.READ_TIMEOUT_MS
+            socket.connect(InetSocketAddress(address, 443), ResearchLimits.CONNECT_TIMEOUT_MS)
+            val parameters = socket.sslParameters
+            parameters.serverNames = listOf(SNIHostName(host))
+            parameters.endpointIdentificationAlgorithm = "HTTPS"
+            socket.sslParameters = parameters
+            socket.startHandshake()
+            if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(host, socket.session)) {
+                return HttpExchange(0, null, "", "", false, "The certificate did not match the approved host. The response was not stored.")
+            }
+            val remote = (socket.remoteSocketAddress as? InetSocketAddress)?.address?.hostAddress
+            if (remote != address.hostAddress) {
+                return HttpExchange(0, null, "", "", false, "The connected address did not match the approved address. The response was not stored.")
+            }
+            val writer = socket.outputStream.bufferedWriter(Charsets.US_ASCII)
+            writer.write("GET $path HTTP/1.1\r\n")
+            writer.write("Host: $host\r\n")
+            writer.write("User-Agent: ${ResearchLimits.USER_AGENT}\r\n")
+            writer.write("Accept: application/json, application/atom+xml, text/html, text/plain\r\n")
+            writer.write("Accept-Encoding: identity\r\n")
+            writer.write("Connection: close\r\n\r\n")
+            writer.flush()
+            if (cancelled()) return HttpExchange(0, null, "", "", false, "The retrieval was cancelled.")
+            readHttp(socket.inputStream, maxBytes, cancelled)
+        } catch (error: Exception) {
+            HttpExchange(0, null, "", "", false, "The retrieval failed before a page was stored.")
+        } finally {
+            socket.close()
+        }
+    }
+
+    private fun readHttp(input: InputStream, maxBytes: Int, cancelled: () -> Boolean): HttpExchange {
+        val header = java.io.ByteArrayOutputStream()
+        var previous = 0
+        while (header.size() < 16_384) {
+            val next = input.read()
+            if (next < 0) break
+            header.write(next)
+            if (previous == '\r'.code && next == '\n'.code && header.toString(Charsets.US_ASCII.name()).contains("\r\n\r\n")) break
+            previous = next
+        }
+        val text = header.toString(Charsets.US_ASCII.name())
+        val split = text.indexOf("\r\n\r\n")
+        if (split < 0) return HttpExchange(0, null, "", "", false, "The retrieval failed before a page was stored.")
+        val lines = text.substring(0, split).split("\r\n")
+        val status = lines.firstOrNull()?.split(" ")?.getOrNull(1)?.toIntOrNull() ?: 0
+        val headers = lines.drop(1).mapNotNull { line ->
+            val mark = line.indexOf(':')
+            if (mark <= 0) null else line.substring(0, mark).trim().lowercase() to line.substring(mark + 1).trim()
+        }.toMap()
+        val location = headers["location"]
+        val type = headers["content-type"].orEmpty().substringBefore(';').trim()
+        val chunked = headers["transfer-encoding"].orEmpty().contains("chunked", ignoreCase = true)
+        val length = headers["content-length"]?.toIntOrNull()
+        val body = if (chunked) readChunks(input, maxBytes, cancelled) else readPlain(input, length, maxBytes, cancelled)
+        return HttpExchange(status, location, type, body.first, body.second, if (cancelled()) "The retrieval was cancelled." else null)
+    }
+
+    private fun readPlain(input: InputStream, length: Int?, maxBytes: Int, cancelled: () -> Boolean): Pair<String, Boolean> {
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(4_096)
+        var total = 0
+        val limit = length?.coerceAtMost(maxBytes + 1) ?: (maxBytes + 1)
+        while (total < limit) {
+            if (cancelled()) break
+            val count = input.read(buffer, 0, minOf(buffer.size, limit - total))
+            if (count < 0) break
+            val room = maxBytes - total
+            if (count > room) {
+                output.write(buffer, 0, room.coerceAtLeast(0))
+                return String(output.toByteArray(), Charsets.UTF_8) to true
+            }
+            output.write(buffer, 0, count)
+            total += count
+        }
+        return String(output.toByteArray(), Charsets.UTF_8) to (length != null && length > maxBytes)
+    }
+
+    private fun readChunks(input: InputStream, maxBytes: Int, cancelled: () -> Boolean): Pair<String, Boolean> {
+        val output = java.io.ByteArrayOutputStream()
+        var truncated = false
+        while (!cancelled()) {
+            val sizeLine = readLine(input) ?: break
+            val size = sizeLine.substringBefore(';').trim().toIntOrNull(16) ?: break
+            if (size == 0) break
+            var remaining = size
+            val buffer = ByteArray(4_096)
+            while (remaining > 0) {
+                val count = input.read(buffer, 0, minOf(buffer.size, remaining))
+                if (count < 0) break
+                remaining -= count
+                if (output.size() + count > maxBytes) {
+                    val room = (maxBytes - output.size()).coerceAtLeast(0)
+                    output.write(buffer, 0, room)
+                    truncated = true
+                } else {
+                    output.write(buffer, 0, count)
+                }
+            }
+            readLine(input)
+            if (truncated) break
+        }
+        return String(output.toByteArray(), Charsets.UTF_8) to truncated
+    }
+
+    private fun readLine(input: InputStream): String? {
+        val line = java.io.ByteArrayOutputStream()
+        while (line.size() < 4_096) {
+            val next = input.read()
+            if (next < 0) return if (line.size() == 0) null else line.toString(Charsets.US_ASCII.name())
+            if (next == '\n'.code) break
+            if (next != '\r'.code) line.write(next)
+        }
+        return line.toString(Charsets.US_ASCII.name())
     }
 }
 

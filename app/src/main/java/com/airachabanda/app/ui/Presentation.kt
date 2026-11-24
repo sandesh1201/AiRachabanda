@@ -18,13 +18,13 @@ object ModeGuide {
         ResearchMode.DEEP_RESEARCH ->
             "Deep Research includes review and verification. Up to three tasks can run together. Delegation can go three steps."
         ResearchMode.CUSTOM ->
-            "Custom uses the participants and round limit you choose. Concurrency is up to two. Delegation can go two steps."
+            "Custom uses the limits you save. A round is not one provider request. Budgets are not raised automatically."
     }
 
     fun customDetail(): String =
-        "Custom settings the engine uses: selected participants, and the round limit from Discussion defaults. " +
-            "That round limit is also the automated request budget. Concurrency stays at most 2 and delegation depth stays at 2. " +
-            "Critical review opens when a critique capability is requested. Verification opens when the question needs a numeric check. " +
+        "Custom settings the engine uses: selected participants, the round limit, the AI request budget, the research request budget, " +
+            "the research source limit, concurrency, delegation depth, the discussion deadline, and whether verification is required. " +
+            "A round is not one provider request. Critical review opens when a critique capability is requested. " +
             "Public research still requires your consent. Zero-cost rules apply in every mode."
 }
 

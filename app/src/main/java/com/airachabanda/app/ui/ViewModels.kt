@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -52,7 +53,7 @@ class HomeViewModel(container: AppContainer) : ViewModel() {
     }
 }
 
-class HistoryViewModel(container: AppContainer) : ViewModel() {
+class HistoryViewModel(private val container: AppContainer) : ViewModel() {
     private val repository = container.repository
     val conversations: StateFlow<List<Conversation>> = repository.observeConversations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -70,7 +71,11 @@ class HistoryViewModel(container: AppContainer) : ViewModel() {
     }
 
     fun delete(id: String) {
-        viewModelScope.launch { repository.deleteConversation(id) }
+        viewModelScope.launch {
+            container.attachments.discardConversation(id)
+            container.documents.discardConversation(id)
+            repository.deleteConversation(id)
+        }
     }
 }
 
@@ -255,7 +260,9 @@ class CouncilViewModel(private val container: AppContainer) : ViewModel() {
 
     fun start(conversationId: String, question: String, mode: ResearchMode, selected: Set<ProviderId>, onResult: (String) -> Unit) {
         viewModelScope.launch {
-            onResult(workflow.start(conversationId, question, mode, maxRounds.value, selected))
+            val limits = container.preferences.discussionLimits.first()
+            val custom = if (mode == com.airachabanda.app.core.model.ResearchMode.CUSTOM) limits else null
+            onResult(workflow.start(conversationId, question, mode, limits.rounds, selected, custom))
             refresh()
         }
     }
@@ -437,6 +444,16 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ResearchMode.STANDARD)
     val maxRounds: StateFlow<Int> = preferences.maxRounds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 3)
+    val discussionLimits: StateFlow<com.airachabanda.app.orchestration.DiscussionBudgets> = preferences.discussionLimits
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.airachabanda.app.orchestration.DiscussionBudgets.standard())
+    private val storage = MutableStateFlow("Measuring local files.")
+    val storageNote: StateFlow<String> = storage
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            storage.value = com.airachabanda.app.documents.LocalStorageReport.describe(container.filesDir, container.cacheDir)
+        }
+    }
     private val credentialRevision = MutableStateFlow(0)
     private val geminiSession = GeminiOwnerSession(UrlConnectionTransport())
     private var geminiRecord: GeminiOwnerSession.Record? = null
@@ -484,6 +501,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setMaxRounds(rounds: Int) {
         viewModelScope.launch { preferences.setMaxRounds(rounds) }
+    }
+
+    fun setDiscussionLimits(limits: com.airachabanda.app.orchestration.DiscussionBudgets) {
+        viewModelScope.launch { preferences.setDiscussionLimits(limits) }
     }
 
     fun saveOpenRouterKey(secret: String, onResult: (String) -> Unit) {

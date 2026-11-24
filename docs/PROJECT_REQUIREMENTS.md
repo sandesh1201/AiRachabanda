@@ -125,6 +125,8 @@ Milestone 011 keeps a discussion going when one provider is unavailable, disable
 
 Milestone 012 keeps that behavior and presents it as the main conversation. Light, dark, and system appearance share one Material 3 theme. Home starts a discussion from a question. Stop asks for confirmation. Custom mode shows the participants and round limit the engine uses. Activity and history read stored records. The discussion foreground service stays a user-started special-use service and does not continue after a force stop. No AI inference request is added. Physical foldable hardware has not been tested.
 
+Milestone 013 keeps schema version 9. Quick, Standard, and Deep Research apply separate round, AI-request, research-request, and source limits. Custom limits are saved and clamped, and they are not raised automatically. Public research connects to the address it approved. PDF characters outside the embedded Helvetica font are omitted and named in the report. Conversation text is not encrypted. OCR is not installed. No AI inference request is added.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

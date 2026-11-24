@@ -53,6 +53,9 @@ class UrlConnectionTransport(
     private val readTimeoutMs: Int = 60_000,
 ) : HttpTransport {
     override suspend fun exchange(request: HttpExchange): HttpResult {
+        if (!request.url.startsWith("https://")) {
+            return HttpResult(0, emptyMap(), "The request was not sent. Only HTTPS is accepted.")
+        }
         val connection = (URL(request.url).openConnection() as HttpURLConnection).apply {
             requestMethod = request.method
             connectTimeout = connectTimeoutMs
@@ -67,15 +70,35 @@ class UrlConnectionTransport(
         try {
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val body = readLimited(stream, 1_048_576)
             val headers = connection.headerFields
                 .filterKeys { it != null }
                 .mapKeys { it.key.lowercase() }
                 .mapValues { it.value.joinToString(",") }
-            return HttpResult(status, headers, body)
+            val reported = if (body == OVERSIZED) 0 else status
+            return HttpResult(reported, headers, body)
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun readLimited(stream: java.io.InputStream?, maxBytes: Int): String {
+        if (stream == null) return ""
+        val buffer = ByteArray(4_096)
+        val output = java.io.ByteArrayOutputStream()
+        var total = 0
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            if (total + count > maxBytes) return OVERSIZED
+            output.write(buffer, 0, count)
+            total += count
+        }
+        return String(output.toByteArray(), Charsets.UTF_8)
+    }
+
+    private companion object {
+        const val OVERSIZED = "The response exceeded the size limit and was not used."
     }
 }
 

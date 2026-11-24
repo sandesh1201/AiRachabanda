@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
+import com.airachabanda.app.orchestration.DiscussionBudgets
 import com.airachabanda.app.provider.ProviderAccess
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -29,6 +30,19 @@ class UserPreferences(private val context: Context) {
 
     val maxRounds: Flow<Int> = context.settingsDataStore.data.map { prefs ->
         prefs[MAX_ROUNDS] ?: 3
+    }
+
+    val discussionLimits: Flow<DiscussionBudgets> = context.settingsDataStore.data.map { prefs ->
+        DiscussionBudgets(
+            rounds = prefs[MAX_ROUNDS] ?: 3,
+            aiRequests = prefs[MAX_AI_REQUESTS] ?: 4,
+            researchRequests = prefs[MAX_RESEARCH_REQUESTS] ?: 2,
+            researchSources = prefs[MAX_RESEARCH_SOURCES] ?: 3,
+            concurrency = prefs[CONCURRENCY] ?: 2,
+            delegationDepth = prefs[DELEGATION_DEPTH] ?: 2,
+            deadlineMinutes = prefs[DEADLINE_MINUTES] ?: 60,
+            verificationRequired = prefs[VERIFICATION] == "required",
+        ).clamped()
     }
 
     val enabledParticipants: Flow<Set<ProviderId>> = context.settingsDataStore.data.map { prefs ->
@@ -53,7 +67,21 @@ class UserPreferences(private val context: Context) {
     }
 
     suspend fun setMaxRounds(rounds: Int) {
-        context.settingsDataStore.edit { it[MAX_ROUNDS] = rounds.coerceIn(1, 8) }
+        context.settingsDataStore.edit { it[MAX_ROUNDS] = rounds.coerceIn(1, DiscussionBudgets.MAX_ROUNDS) }
+    }
+
+    suspend fun setDiscussionLimits(limits: DiscussionBudgets) {
+        val saved = limits.clamped()
+        context.settingsDataStore.edit { prefs ->
+            prefs[MAX_ROUNDS] = saved.rounds
+            prefs[MAX_AI_REQUESTS] = saved.aiRequests
+            prefs[MAX_RESEARCH_REQUESTS] = saved.researchRequests
+            prefs[MAX_RESEARCH_SOURCES] = saved.researchSources
+            prefs[CONCURRENCY] = saved.concurrency
+            prefs[DELEGATION_DEPTH] = saved.delegationDepth
+            prefs[DEADLINE_MINUTES] = saved.deadlineMinutes
+            prefs[VERIFICATION] = if (saved.verificationRequired) "required" else "mode"
+        }
     }
 
     suspend fun setParticipantEnabled(providerId: ProviderId, enabled: Boolean) {
@@ -78,6 +106,13 @@ class UserPreferences(private val context: Context) {
         val APPEARANCE = stringPreferencesKey("appearance")
         val RESEARCH_MODE = stringPreferencesKey("default_research_mode")
         val MAX_ROUNDS = intPreferencesKey("max_rounds")
+        val MAX_AI_REQUESTS = intPreferencesKey("max_ai_requests")
+        val MAX_RESEARCH_REQUESTS = intPreferencesKey("max_research_requests")
+        val MAX_RESEARCH_SOURCES = intPreferencesKey("max_research_sources")
+        val CONCURRENCY = intPreferencesKey("concurrency_limit")
+        val DELEGATION_DEPTH = intPreferencesKey("delegation_depth")
+        val DEADLINE_MINUTES = intPreferencesKey("deadline_minutes")
+        val VERIFICATION = stringPreferencesKey("verification_requirement")
         val ENABLED_PARTICIPANTS = stringSetPreferencesKey("enabled_participants")
         val LAST_CONVERSATION = stringPreferencesKey("last_assisted_conversation")
         val LAST_TASK = stringPreferencesKey("last_assisted_task")

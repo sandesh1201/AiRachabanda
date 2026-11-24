@@ -5,6 +5,18 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.min
 
+object PdfText {
+    fun encodable(char: Char): Boolean = char.code in 32..126 || char.code in 160..255
+
+    fun omitted(text: String): String {
+        val missing = text.filter { char -> !char.isWhitespace() && !encodable(char) }.toSet()
+        if (missing.isEmpty()) return ""
+        val sample = missing.take(12).joinToString("")
+        val scripts = missing.map { Character.UnicodeScript.of(it.code) }.distinct().joinToString(", ") { it.name }
+        return "These characters were not drawn in the PDF because the embedded Helvetica font has no glyph for them: $sample. Scripts: $scripts. The file does not substitute a question mark. Telugu and other scripts outside Windows-1252 need a licensed Unicode font, and no additional font was downloaded."
+    }
+}
+
 object DocumentWriters {
     fun render(document: StructuredDocument, format: OutputFormat): ByteArray = when (format) {
         OutputFormat.PDF -> pdf(document)
@@ -154,12 +166,8 @@ object DocumentWriters {
 
     private fun pdfHex(text: String): String = buildString {
         text.forEach { char ->
-            val code = when {
-                char.code in 32..126 -> char.code
-                char.code in 160..255 -> char.code
-                else -> '?'.code
-            }
-            append("%02X".format(code))
+            if (!PdfText.encodable(char)) return@forEach
+            append("%02X".format(char.code))
         }
     }
 

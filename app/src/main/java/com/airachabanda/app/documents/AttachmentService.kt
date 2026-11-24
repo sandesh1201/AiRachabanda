@@ -152,6 +152,12 @@ class AttachmentService(
         if (clean.isNotBlank()) council.renameAttachment(id, clean)
     }
 
+    suspend fun discardConversation(conversationId: String) {
+        council.attachments(conversationId).forEach { attachment ->
+            File(root, attachment.id).deleteRecursively()
+        }
+    }
+
     suspend fun remove(id: String) {
         val attachment = council.attachment(id) ?: return
         discussion.deleteEvidenceByLocatorPrefix("attachment:$id")

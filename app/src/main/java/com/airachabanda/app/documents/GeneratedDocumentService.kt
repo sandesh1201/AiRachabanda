@@ -131,6 +131,12 @@ class GeneratedDocumentService(
         return generate(current.conversationId, current.title, current.templateId, current.format, current.sourceBody, current.includeRecords)
     }
 
+    suspend fun discardConversation(conversationId: String) {
+        council.generatedDocuments(conversationId).forEach { document ->
+            File(storageRoot ?: context.filesDir, "generated/${document.id}").deleteRecursively()
+        }
+    }
+
     suspend fun remove(id: String): String {
         val current = council.generatedDocument(id) ?: return "That document is no longer stored."
         File(storageRoot ?: context.filesDir, "generated/$id").deleteRecursively()

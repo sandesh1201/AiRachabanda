@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import com.airachabanda.app.documents.AttachmentService
 import com.airachabanda.app.documents.GeneratedDocumentService
+import com.airachabanda.app.documents.TemporaryFiles
 import com.airachabanda.app.orchestration.DatabaseParticipantSource
 import com.airachabanda.app.orchestration.OrchestrationEngine
 import com.airachabanda.app.persistence.AppDatabase
@@ -41,6 +42,7 @@ class AIRachabandaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        TemporaryFiles.sweep(cacheDir, System.currentTimeMillis())
     }
 }
 
@@ -68,6 +70,8 @@ class AppContainer(context: Application) {
         dao = database.councilDao(),
         credentials = credentialStore,
     )
+    val filesDir: File = context.filesDir
+    val cacheDir: File = context.cacheDir
     val preferences: UserPreferences = UserPreferences(context)
     val openRouterStatus: OpenRouterStatusStore = OpenRouterStatusStore(File(context.filesDir, "openrouter-status.json"))
     val openRouterAdapter: OpenRouterAdapter = OpenRouterAdapter(

@@ -50,6 +50,8 @@ Milestone 005F prepares one Gemini request for `gemini-3.5-flash-lite` with a 12
 
 Milestone 012 does not change the schema. The same engine records pause, resume, stop, finish, and skip as workflow events. The interface reads those records. The foreground service remains special-use and does not resume a stopped discussion. No AI inference request is added.
 
+Milestone 013 does not change the schema. A discussion round, an AI request, a research request, and a stored source are separate limits. Quick, Standard, and Deep Research select those limits. Custom values are clamped to the application maximum and are not increased by the engine. Public research opens a TLS connection to an address that was just checked, with the approved host name used for the certificate. No AI inference request is added.
+
 Milestone 011 adds Room schema version 9. A provider fault is stored on the session, and an unfinished task can move to another eligible participant. Unknown outcomes are not retried. Pause, stop, and finish now are persisted. A foreground service can show the discussion stage while the app is in the background. It does not resume a discussion the user paused or stopped, and it does not start again after a force stop. No AI inference request is added.
 
 Milestone 010 adds Room schema version 8. Generated documents are stored beside the conversation and rendered from supplied text and stored records. Existing conversations stay in place through `Migrations.MIGRATION_7_8`. Rendering runs off the main thread. A generated file is not uploaded and is not an AI provider response.

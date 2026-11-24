@@ -210,6 +210,16 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Pause, resume, stop, finish, and skip write a workflow event for the action that occurred. The discussion control behavior is unchanged.
 - History reads the latest stored session state. Delete waits for confirmation.
 
+## Milestone 013 checks
+
+- Quick, Standard, and Deep Research use different round, AI-request, research-request, and source limits. A round is not stored as the AI-request budget.
+- A custom limit above the application maximum is clamped. The engine does not raise it.
+- A resolved address list that mixes a public address with a private address is rejected. The research connection target uses the approved address literal.
+- Title overlap can rank two fixture sources. The stored verification state stays retrieved and not assessed.
+- A Telugu character in a PDF is named in the report and is not replaced with a question mark. Latin text such as café is still drawn.
+- Cache files older than the sweep age are removed. A newer cache file is left in place.
+- Untrusted text cannot enable code execution, credential reads, arbitrary network access, or a budget increase through the execution gate.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

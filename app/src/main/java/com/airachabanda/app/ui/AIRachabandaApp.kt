@@ -227,6 +227,8 @@ fun AIRachabandaApp(
                     val appearance by model.appearance.collectAsState()
                     val mode by model.researchMode.collectAsState()
                     val rounds by model.maxRounds.collectAsState()
+                    val limits by model.discussionLimits.collectAsState()
+                    val storageNote by model.storageNote.collectAsState()
                     val openRouterStatus by model.openRouterStatus.collectAsState()
                     val directCredentials by model.directCredentials.collectAsState()
                     val enabled by model.enabledParticipants.collectAsState()
@@ -258,6 +260,9 @@ fun AIRachabandaApp(
                         enabledProviders = enabled,
                         onToggleParticipant = model::setParticipantEnabled,
                         contentPadding = padding,
+                        limits = limits,
+                        onSaveLimits = model::setDiscussionLimits,
+                        storageNote = storageNote,
                     )
                 }
                 composable(

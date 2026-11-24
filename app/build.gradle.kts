@@ -13,8 +13,8 @@ android {
         applicationId = "com.airachabanda.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.12.0"
+        versionCode = 21
+        versionName = "0.13.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }
@@ -22,6 +22,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
