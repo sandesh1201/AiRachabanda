@@ -5,8 +5,10 @@ import com.airachabanda.app.provider.local.ondevice.LocalTask
 import com.airachabanda.app.provider.local.ondevice.OnDeviceInstaller
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelManager
+import com.airachabanda.app.provider.local.ondevice.OnDevicePreflight
 import com.airachabanda.app.provider.local.ondevice.OnDeviceRuntime
 import com.airachabanda.app.provider.local.ondevice.OnDeviceScheduler
+import com.airachabanda.app.provider.local.ondevice.ThermalLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -21,7 +23,9 @@ class Milestone015ETest {
         assertEquals("0.20.0", OnDeviceRuntime.PINNED_VERSION)
         assertEquals("CPU", OnDeviceRuntime.BACKEND)
         assertEquals(64, OnDeviceRuntime.AAR_SHA256.length)
-        assertFalse(OnDeviceRuntime.PACKAGED)
+        assertTrue(OnDeviceRuntime.PACKAGED)
+        assertFalse(OnDeviceRuntime.GPU_PACKAGED)
+        assertFalse(OnDeviceRuntime.OWNER_DOWNLOAD_APPROVED)
         val gemma = OnDeviceModelCatalog.GEMMA
         val qwen = OnDeviceModelCatalog.QWEN
         assertTrue(gemma.fileName.endsWith(".litertlm"))
@@ -84,5 +88,31 @@ class Milestone015ETest {
         assertEquals(96, shortened.outputTokens)
         assertTrue(shortened.detail.contains("shortened"))
         assertFalse(scheduler.limitsFor(OnDeviceModelCatalog.GEMMA.id, LocalTask.COUNCIL, 4096).accepted)
+    }
+
+    @Test
+    fun anUnverifiedFileIsNotLoaded() {
+        val root = File(System.getProperty("java.io.tmpdir"), "airachabanda-015e-preflight-${System.nanoTime()}")
+        val directory = OnDevicePreflight.modelDirectory(root)
+        directory.mkdirs()
+        val qwen = OnDeviceModelCatalog.QWEN
+        assertNull(OnDevicePreflight.verifiedFile(directory, qwen))
+        val file = File(directory, qwen.fileName)
+        file.writeText("not-the-model")
+        assertNull(OnDevicePreflight.verifiedFile(directory, qwen))
+        val scheduler = OnDeviceScheduler()
+        val refused = OnDevicePreflight.refusal(
+            qwen,
+            file,
+            "What is 17 multiplied by 23?",
+            LocalTask.ARITHMETIC,
+            availableRamBytes = 8L shl 30,
+            thermal = ThermalLevel.NORMAL,
+            accept = true,
+            scheduler = scheduler,
+        )
+        assertTrue(refused!!.failure!!.contains("unverified"))
+        assertEquals("", refused.text)
+        root.deleteRecursively()
     }
 }

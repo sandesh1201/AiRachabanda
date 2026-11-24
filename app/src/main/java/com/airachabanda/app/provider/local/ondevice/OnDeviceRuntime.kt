@@ -1,7 +1,8 @@
 package com.airachabanda.app.provider.local.ondevice
 
 /**
- * One on-device runtime. The native library is not packaged and is not downloaded here.
+ * One on-device runtime. The owner approved the LiteRT-LM 0.20.0 CPU artifact.
+ * Model weights stay untransferred. The GPU artifact is excluded.
  * LiteRT-LM is selected because Google publishes an Android artifact, CPU and GPU backends,
  * a Snapdragon 8 Gen 3 measurement for Gemma, and LiteRT conversions for a second model family.
  */
@@ -13,7 +14,8 @@ object OnDeviceRuntime {
     const val AAR_SHA256 = "9cd2699d796a7120ff567316de85e797250cc10b2b67cb616c48567b719e7ed8"
     const val LICENSE_NAME = "Apache-2.0"
     const val BACKEND = "CPU"
-    const val PACKAGED = false
+    const val PACKAGED = true
+    const val GPU_PACKAGED = false
     const val OWNER_DOWNLOAD_APPROVED = false
     const val NETWORK_PERMITTED = false
     const val TARGET_DEVICE = "Samsung Galaxy Z Fold 6"

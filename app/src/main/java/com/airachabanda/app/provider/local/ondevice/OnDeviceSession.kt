@@ -101,6 +101,10 @@ class OnDeviceScheduler {
         cancelled += generationId
     }
 
+    fun cancelCurrent() {
+        if (activeGeneration > 0) cancelled += activeGeneration
+    }
+
     fun accept(permit: GenerationPermit): Boolean =
         permit.generationId == activeGeneration && permit.generationId !in cancelled
 }
@@ -176,7 +180,7 @@ object OnDeviceDispatch {
         return if (model == null) {
             "No on-device model was selected."
         } else {
-            "LiteRT-LM is prepared for ${model.displayName}. No runtime or model file is installed, so no tokens were generated."
+            "LiteRT-LM ${OnDeviceRuntime.PINNED_VERSION} is packaged for CPU. No verified model file is installed for ${model.displayName}, so no tokens were generated."
         }
     }
 }

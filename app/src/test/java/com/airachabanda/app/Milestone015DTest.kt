@@ -26,14 +26,15 @@ class Milestone015DTest {
     private val plenty = 8L * 1024 * 1024 * 1024
 
     @Test
-    fun twoFamiliesAreRegisteredAndTheRuntimeIsNotPackaged() {
+    fun twoFamiliesAreRegisteredAndTheRuntimeIsCpuOnly() {
         assertEquals("Gemma", gemma.family)
         assertEquals("Qwen", qwen.family)
         assertTrue(OnDeviceModelCatalog.compatible(gemma))
         assertTrue(OnDeviceModelCatalog.compatible(qwen))
         assertEquals(OnDeviceRuntime.Candidate.LITERT_LM, OnDeviceRuntime.selected.candidate)
         assertEquals(1, OnDeviceRuntime.assessments.count { it.selected })
-        assertFalse(OnDeviceRuntime.PACKAGED)
+        assertTrue(OnDeviceRuntime.PACKAGED)
+        assertFalse(OnDeviceRuntime.GPU_PACKAGED)
         assertFalse(OnDeviceRuntime.OWNER_DOWNLOAD_APPROVED)
         assertFalse(OnDeviceRuntime.NETWORK_PERMITTED)
         assertTrue(ProviderAccess.profile(ProviderId.LOCAL).modes.contains(com.airachabanda.app.provider.ProviderAccessMode.LOCAL_INFERENCE))

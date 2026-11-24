@@ -139,7 +139,7 @@ Milestone 015C keeps schema version 9. Connect can read Groq models, OpenRouter 
 
 Milestone 015D keeps schema version 9. LiteRT-LM is the prepared on-device runtime for Gemma 3 1B and Qwen 2.5 1.5B. The runtime and the model files are not downloaded. Online billing gates stay in place. No live inference request is added by the milestone itself.
 
-Milestone 015E keeps schema version 9. LiteRT-LM 0.20.0 is pinned and not packaged. The CPU Gemma and Qwen file names, revisions, and sizes are recorded. Gemma has no pinned SHA-256 until its license is accepted by the owner. No runtime or model file is transferred. No live inference request is added by the milestone itself.
+Milestone 015E keeps schema version 9. LiteRT-LM 0.20.0 is packaged for CPU after the owner approved that runtime. The GPU artifact is excluded. The CPU Gemma and Qwen file names, revisions, and sizes are recorded. Gemma has no pinned SHA-256 until its license is accepted by the owner. Model weights are not transferred. No live inference request is added by the milestone itself.
 
 ## Toolchain pin for Milestone 003
 

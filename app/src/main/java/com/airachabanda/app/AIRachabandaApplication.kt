@@ -1,6 +1,8 @@
 package com.airachabanda.app
 
 import android.app.Application
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import androidx.room.Room
 import com.airachabanda.app.documents.AttachmentService
 import com.airachabanda.app.documents.GeneratedDocumentService
@@ -14,6 +16,12 @@ import com.airachabanda.app.persistence.UserPreferences
 import com.airachabanda.app.provider.cloudflare.CloudflareAdapter
 import com.airachabanda.app.provider.cloudflare.CloudflareAuthorization
 import com.airachabanda.app.provider.dispatch.PreparedProviderDispatch
+import com.airachabanda.app.provider.local.ondevice.LiteRtLmRuntime
+import com.airachabanda.app.provider.local.ondevice.OnDevicePreflight
+import com.airachabanda.app.provider.local.ondevice.ThermalLevel
+import android.app.ActivityManager
+import android.os.Build
+import android.os.PowerManager
 import com.airachabanda.app.provider.gemini.GeminiAdapter
 import com.airachabanda.app.provider.gemini.GeminiAuthorization
 import com.airachabanda.app.provider.openrouter.OpenRouterAdapter
@@ -43,6 +51,14 @@ class AIRachabandaApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         TemporaryFiles.sweep(cacheDir, System.currentTimeMillis())
+        registerComponentCallbacks(object : ComponentCallbacks2 {
+            override fun onConfigurationChanged(newConfig: Configuration) = Unit
+            @Deprecated("ComponentCallbacks2 still requires this callback.")
+            override fun onLowMemory() = LiteRtLmRuntime.unload()
+            override fun onTrimMemory(level: Int) {
+                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) LiteRtLmRuntime.unload()
+            }
+        })
     }
 }
 
@@ -111,6 +127,10 @@ class AppContainer(context: Application) {
             discussion = database.discussionDao(),
             clock = { System.currentTimeMillis() },
             ids = { java.util.UUID.randomUUID().toString() },
+            localModels = OnDevicePreflight.modelDirectory(context.filesDir).apply { mkdirs() },
+            localCache = context.cacheDir,
+            localRamBytes = { availableRam(context) },
+            localThermal = { thermal(context) },
         ),
         attachmentContext = { conversationId, sessionId -> attachments.prepare(conversationId, sessionId) },
         onDiscussionStopped = { conversationId -> documents.cancelPending(conversationId) },
@@ -120,4 +140,21 @@ class AppContainer(context: Application) {
 
     @Volatile
     var pendingDiscussion: PendingDiscussion? = null
+}
+
+private fun availableRam(context: Application): Long {
+    val manager = context.getSystemService(ActivityManager::class.java) ?: return 0L
+    val info = ActivityManager.MemoryInfo()
+    manager.getMemoryInfo(info)
+    return info.availMem
+}
+
+private fun thermal(context: Application): ThermalLevel {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ThermalLevel.NORMAL
+    val power = context.getSystemService(PowerManager::class.java) ?: return ThermalLevel.NORMAL
+    return if (power.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) {
+        ThermalLevel.SEVERE
+    } else {
+        ThermalLevel.NORMAL
+    }
 }

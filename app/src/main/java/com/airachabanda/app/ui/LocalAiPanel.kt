@@ -11,14 +11,18 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.airachabanda.app.provider.local.ondevice.LiteRtLmRuntime
 import com.airachabanda.app.provider.local.ondevice.LocalTask
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelManager
@@ -31,6 +35,10 @@ fun LocalAiPanel() {
     var selectedId by rememberSaveable { mutableStateOf(OnDeviceModelCatalog.GEMMA.id) }
     var confirmDownload by rememberSaveable { mutableStateOf(false) }
     var message by rememberSaveable { mutableStateOf("No model file is stored on this device.") }
+    var library by remember { mutableStateOf("Checking the CPU library.") }
+    LaunchedEffect(Unit) {
+        library = withContext(Dispatchers.IO) { LiteRtLmRuntime.probe() }
+    }
     val selected = OnDeviceModelCatalog.find(selectedId) ?: OnDeviceModelCatalog.GEMMA
     val available = remember(selected.id) {
         runCatching { StatFs(context.filesDir.absolutePath).availableBytes }.getOrDefault(0L)
@@ -38,7 +46,7 @@ fun LocalAiPanel() {
     Column(Modifier.fillMaxWidth()) {
         Text("Local AI", style = MaterialTheme.typography.titleMedium)
         Text(
-            "${OnDeviceRuntime.NAME} is the prepared runtime. The native library is not in this APK. No account or API key is used.",
+            "${OnDeviceRuntime.NAME} ${OnDeviceRuntime.PINNED_VERSION} is packaged for ${OnDeviceRuntime.BACKEND}. Model weights are not installed. No account or API key is used. $library",
             style = MaterialTheme.typography.bodySmall,
         )
         OnDeviceModelCatalog.recommended.forEach { model ->

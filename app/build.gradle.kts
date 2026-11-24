@@ -13,8 +13,8 @@ android {
         applicationId = "com.airachabanda.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "0.15.5"
+        versionCode = 29
+        versionName = "0.15.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }
@@ -67,6 +67,15 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        // LiteRT-LM 0.20.0 ships Kotlin 2.4 metadata. The app compiler stays on 2.2.21.
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
+    }
+}
+
+configurations.configureEach {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:2.2.21")
+        force("org.jetbrains.kotlin:kotlin-reflect:2.2.21")
     }
 }
 
@@ -95,6 +104,9 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.androidx.exifinterface)
     implementation(libs.play.services.auth)
+    implementation(libs.litertlm.android) {
+        exclude(group = "com.google.ai.edge.litert", module = "litert-gpu")
+    }
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
