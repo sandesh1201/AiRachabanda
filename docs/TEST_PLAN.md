@@ -234,6 +234,13 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - Gemini inference consent, project binding, and unlinked billing are still required. The gate's permitted decision is a synthetic fixture. It is not a live response.
 - A Cloudflare subscriptions read that does not positively name Workers Free stays blocked. ChatGPT and Claude stay ineligible for automated inference.
 
+## Milestone 015A checks
+
+- Every catalog provider has at least one supported access method. Official links use HTTPS. ChatGPT offers assisted chat only.
+- A stored Groq key does not mark zero-cost eligibility or Council automation as ready.
+- A Claude subscription declaration can enable assisted participation and still says a consumer sign-in is not confirmed.
+- Redaction still removes an API-key assignment from a log line.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

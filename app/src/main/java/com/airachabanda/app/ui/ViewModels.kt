@@ -484,6 +484,26 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false to false)
+    val storedProviders: StateFlow<Set<ProviderId>> = credentialRevision
+        .flatMapLatest {
+            kotlinx.coroutines.flow.flow {
+                suspend fun stored(id: ProviderId, accountKey: String): Boolean {
+                    val access = credentials.get(id.name, accountKey)
+                    val present = access is CredentialAccess.Available
+                    if (access is CredentialAccess.Available) access.secret.fill(0)
+                    return present
+                }
+                val present = mutableSetOf<ProviderId>()
+                if (stored(ProviderId.OPENROUTER, CredentialAccounts.DEFAULT)) present += ProviderId.OPENROUTER
+                if (stored(ProviderId.CLOUDFLARE, CLOUDFLARE_TOKEN) && stored(ProviderId.CLOUDFLARE, CLOUDFLARE_ACCOUNT)) {
+                    present += ProviderId.CLOUDFLARE
+                }
+                if (stored(ProviderId.GEMINI, CredentialAccounts.DEFAULT)) present += ProviderId.GEMINI
+                if (stored(ProviderId.GROQ, CredentialAccounts.DEFAULT)) present += ProviderId.GROQ
+                emit(present)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
     val enabledParticipants: StateFlow<Set<ProviderId>> = preferences.enabledParticipants
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.airachabanda.app.provider.ProviderAccess.defaultEnabled)
 
@@ -584,6 +604,26 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             geminiStatus.value = "The API key changed. Billing eligibility was cleared. No Gemini request was sent."
             credentialRevision.value = credentialRevision.value + 1
             onResult("The Gemini API key was stored on this device. No Gemini request was sent.")
+        }
+    }
+
+    fun saveGroq(apiKey: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            if (apiKey.isBlank()) {
+                onResult("Enter a Groq API key. Nothing was stored.")
+                return@launch
+            }
+            credentials.put(ProviderId.GROQ.name, CredentialAccounts.DEFAULT, apiKey.toByteArray(Charsets.UTF_8))
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Groq API key was stored on this device. Automated inference stays off until the Free plan is verified. No Groq request was sent.")
+        }
+    }
+
+    fun removeGroq(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            credentials.delete(ProviderId.GROQ.name, CredentialAccounts.DEFAULT)
+            credentialRevision.value = credentialRevision.value + 1
+            onResult("The Groq API key was removed from this device.")
         }
     }
 

@@ -261,11 +261,62 @@ fun AIRachabandaApp(
                         onInferGemini = { token, done -> model.inferGemini(token, done) },
                         enabledProviders = enabled,
                         onToggleParticipant = model::setParticipantEnabled,
+                        onConfigure = { id -> navController.navigate("settings/setup/${id.name}") },
                         contentPadding = padding,
                         limits = limits,
                         onSaveLimits = model::setDiscussionLimits,
                         storageNote = storageNote,
                     )
+                }
+                composable(
+                    "settings/setup/{providerId}",
+                    arguments = listOf(navArgument("providerId") { type = NavType.StringType }),
+                ) { entry ->
+                    val model: SettingsViewModel = viewModel(factory = factory)
+                    val accounts: AccountViewModel = viewModel(factory = factory)
+                    val providers by accounts.providers.collectAsState()
+                    val enabled by model.enabledParticipants.collectAsState()
+                    val stored by model.storedProviders.collectAsState()
+                    val geminiVerification by model.geminiVerification.collectAsState()
+                    val id = entry.arguments?.getString("providerId")?.let { runCatching { ProviderId.valueOf(it) }.getOrNull() }
+                    val config = providers.firstOrNull { it.providerId == id }
+                    if (id == null || config == null) {
+                        EmptyPanel("Provider setup is still loading.", Modifier.padding(padding))
+                    } else {
+                        ProviderSetupScreen(
+                            config = config,
+                            enabled = id in enabled,
+                            credentialStored = id in stored,
+                            billingVerified = config.billingEligibility == com.airachabanda.app.core.model.BillingEligibility.VERIFIED_FREE ||
+                                config.billingEligibility == com.airachabanda.app.core.model.BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED,
+                            verificationNote = if (id == ProviderId.GEMINI) geminiVerification else "",
+                            onDeclare = { choice ->
+                                accounts.save(id, choice, null)
+                                notice("Access method saved. No API request was sent.")
+                            },
+                            onSaveSecrets = { values ->
+                                when (id) {
+                                    ProviderId.OPENROUTER -> model.saveOpenRouterKey(values["api-key"].orEmpty()) { message -> notice(message) }
+                                    ProviderId.GEMINI -> model.saveGemini(values["api-key"].orEmpty()) { message -> notice(message) }
+                                    ProviderId.CLOUDFLARE -> model.saveCloudflare(values["account-id"].orEmpty(), values["api-token"].orEmpty()) { message -> notice(message) }
+                                    ProviderId.GROQ -> model.saveGroq(values["api-key"].orEmpty()) { message -> notice(message) }
+                                    else -> notice("This provider does not take an API credential.")
+                                }
+                            },
+                            onRemoveSecrets = {
+                                when (id) {
+                                    ProviderId.OPENROUTER -> model.removeOpenRouterKey { message -> notice(message) }
+                                    ProviderId.GEMINI -> model.removeGemini { message -> notice(message) }
+                                    ProviderId.CLOUDFLARE -> model.removeCloudflare { message -> notice(message) }
+                                    ProviderId.GROQ -> model.removeGroq { message -> notice(message) }
+                                    else -> notice("No API credential is stored for this provider.")
+                                }
+                            },
+                            onToggle = { on -> model.setParticipantEnabled(id, on) },
+                            onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
+                            contentPadding = padding,
+                        )
+                    }
                 }
                 composable(
                     "account/{providerId}",

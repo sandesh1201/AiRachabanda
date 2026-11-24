@@ -124,6 +124,7 @@ fun SettingsDetail(
     onInferGemini: (String, (String) -> Unit) -> Unit,
     enabledProviders: Set<ProviderId>,
     onToggleParticipant: (ProviderId, Boolean) -> Unit,
+    onConfigure: (ProviderId) -> Unit = {},
     contentPadding: PaddingValues,
     limits: com.airachabanda.app.orchestration.DiscussionBudgets = com.airachabanda.app.orchestration.DiscussionBudgets.standard(),
     onSaveLimits: (com.airachabanda.app.orchestration.DiscussionBudgets) -> Unit = {},
@@ -150,7 +151,7 @@ fun SettingsDetail(
                     }
                 }
             }
-            "providers" -> ProviderAccessSettings(providers, enabledProviders, onToggleParticipant)
+            "providers" -> ProviderAccessSettings(providers, enabledProviders, onToggleParticipant, onConfigure)
             "usage" -> {
                 Text("Usage & Limits", style = MaterialTheme.typography.headlineSmall)
                 Text("Quotas that have not been observed stay unknown. This screen does not invent remaining credits or reset times.")
@@ -212,7 +213,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.15.0. Free chat is assisted. External account setup is paused until you authorize it inside the app. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
+                Text("Version 0.15.1. Provider setup stays in this app. Free chat is assisted. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. Local inference is not installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
             }
         }
     }
@@ -652,15 +653,37 @@ private fun DirectProviderSettings(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun ProviderAccessSettings(
     providers: List<ProviderConfig>,
     enabled: Set<ProviderId>,
     onToggle: (ProviderId, Boolean) -> Unit,
+    onConfigure: (ProviderId) -> Unit,
 ) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf("All") }
     Text("AI Providers", style = MaterialTheme.typography.headlineSmall)
-    Text("Ready for automated participation appears only when free eligibility is verified and automation is enabled. Assisted chat, a stored credential, and verification are separate. Stored credentials are not shown.")
+    Text("Set up each provider in the app. Ready for automated participation appears only when free eligibility is verified. Stored credentials are not shown.")
     Text("Zero-cost mode is on. Paid inference is not offered.")
-    ProviderId.entries.forEach { id ->
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Search providers") },
+        singleLine = true,
+    )
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("All", "Configured", "Not configured", "Enabled", "Disabled").forEach { name ->
+            androidx.compose.material3.FilterChip(
+                selected = filter == name,
+                onClick = { filter = name },
+                label = { Text(name) },
+            )
+        }
+    }
+    ProviderId.entries.filter { id ->
+        ProviderRegistry.definition(id).displayName.contains(query.trim(), ignoreCase = true)
+    }.forEach { id ->
         val profile = ProviderAccess.profile(id)
         val config = providers.firstOrNull { it.providerId == id }
         val canToggle = ProviderAccess.active(id) == com.airachabanda.app.core.model.ParticipationMode.ASSISTED
@@ -669,6 +692,15 @@ private fun ProviderAccessSettings(
         } else {
             ProviderPresentation.status(config, enabled = !canToggle || id in enabled)
         }
+        val configured = config != null && config.accountChoice != com.airachabanda.app.core.model.AccountChoice.NOT_CONFIGURED
+        val shown = when (filter) {
+            "Configured" -> configured
+            "Not configured" -> !configured
+            "Enabled" -> canToggle && id in enabled
+            "Disabled" -> canToggle && id !in enabled
+            else -> true
+        }
+        if (!shown) return@forEach
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
                 Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
@@ -679,6 +711,7 @@ private fun ProviderAccessSettings(
                     if (kind != status) Text(kind, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(profile.note, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { onConfigure(id) }) { Text("Set up") }
             }
             if (canToggle) {
                 Switch(

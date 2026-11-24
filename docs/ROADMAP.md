@@ -29,6 +29,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 013: Separate discussion limits, pinned public-research connections, and PDF characters that the embedded font cannot draw are reported. Schema version 9 is unchanged. No live inference request is added. OCR is not installed.
 - Milestone 014: Compact, medium, and expanded layouts follow the window width. A reported separating fold reserves a gap. The supporting pane reads the same discussion. Schema version 9 is unchanged. A physical Galaxy Z Fold 6 was not tested. No live inference request is added.
 - Milestone 015: Provider states name the blocker. Official pages were re-read. No account was created and no live inference request was sent. ChatGPT and Claude stay assisted.
+- Milestone 015A: Provider setup, credential entry, and official links stay inside the app. Automated inference stays behind the existing eligibility gates. No live inference request was sent.
 
 ## Next
 
