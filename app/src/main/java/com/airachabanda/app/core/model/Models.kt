@@ -15,6 +15,7 @@ enum class ProviderId {
     GROQ,
     OPENROUTER,
     CLOUDFLARE,
+    LOCAL,
 }
 
 enum class ProviderKind {

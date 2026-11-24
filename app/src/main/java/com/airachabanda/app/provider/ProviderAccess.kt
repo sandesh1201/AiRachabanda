@@ -47,6 +47,7 @@ object ProviderAccess {
         apiOnly(ProviderId.GROQ, "Groq has an API console, not a separate free chat. Free and Developer billing cannot be distinguished, so automation is off."),
         apiOnly(ProviderId.OPENROUTER, "OpenRouter has no free consumer chat. Automation stays off until billing protection is verified."),
         apiOnly(ProviderId.CLOUDFLARE, "Workers AI has no free consumer chat. A missing paid subscription does not positively establish Workers Free."),
+        local(),
     ).associateBy { it.providerId }
 
     val defaultEnabled: Set<ProviderId> = setOf(ProviderId.CLAUDE)
@@ -86,6 +87,14 @@ object ProviderAccess {
         chatUrl = url,
         labels = listOf(AccessLabel.FREE_CHAT, AccessLabel.BILLING_VERIFICATION_REQUIRED),
         note = note,
+    )
+
+    private fun local() = ProviderAccessProfile(
+        providerId = ProviderId.LOCAL,
+        modes = setOf(ProviderAccessMode.LOCAL_INFERENCE),
+        chatUrl = null,
+        labels = listOf(AccessLabel.LOCAL_INFERENCE, AccessLabel.CONFIGURATION_REQUIRED),
+        note = "Optional loopback inference. No runtime is installed, and cloud execution is rejected.",
     )
 
     private fun apiOnly(id: ProviderId, note: String) = ProviderAccessProfile(

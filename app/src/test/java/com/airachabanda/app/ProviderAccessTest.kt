@@ -41,5 +41,8 @@ class ProviderAccessTest {
         assertFalse(ImportRules.check(ProviderId.CLOUDFLARE, "A pasted response", 1).accepted)
         assertTrue(ProviderAccess.assistedProviders().contains(ProviderId.CLAUDE))
         assertTrue(ProviderAccess.assistedProviders().contains(ProviderId.META_AI))
+        assertEquals(ParticipationMode.UNAVAILABLE, ProviderAccess.active(ProviderId.LOCAL))
+        assertFalse(ProviderAccess.assistedProviders().contains(ProviderId.LOCAL))
+        assertTrue(ProviderAccess.profile(ProviderId.LOCAL).modes.contains(ProviderAccessMode.LOCAL_INFERENCE))
     }
 }

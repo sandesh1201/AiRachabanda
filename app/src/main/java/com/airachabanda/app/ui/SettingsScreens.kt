@@ -166,7 +166,7 @@ fun SettingsDetail(
                 credentialLabel = "API token",
                 accountLabel = "Account ID",
                 status = cloudflareStatus(cloudflareReady),
-                consent = "A confirmed check would send GET https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search and GET https://api.cloudflare.com/client/v4/accounts/{account_id}/subscriptions. Model search needs Workers AI Read. The subscriptions read needs Billing Read. That response can show WORKERS_PAID. It does not positively name Workers Free. This build does not send either request.",
+                consent = "A confirmed check would send GET https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search and GET https://api.cloudflare.com/client/v4/accounts/{account_id}/subscriptions. Model search needs Workers AI Read. The subscriptions read needs Billing Read. That response can show WORKERS_PAID. A rate_plan id of free is a product plan, not Workers Free. Entitlements need Account Read and return feature allocations, not the Workers plan name. This build does not send those requests.",
                 onSave = { account, secret -> onSaveCloudflare(account, secret) },
                 onRemove = onRemoveCloudflare,
             )
@@ -176,7 +176,7 @@ fun SettingsDetail(
                 credentialLabel = "API key",
                 accountLabel = null,
                 status = geminiStatus(geminiReady),
-                consent = "A confirmed check would send GET https://generativelanguage.googleapis.com/v1beta/models with the key in the x-goog-api-key header. That call does not show billing. Proving billing is unlinked needs GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo and permission billing.resourceAssociations.get. The Gemini API key does not prove which project it belongs to. This build does not send either request. Free-tier prompts and responses may be used to improve Google products.",
+                consent = "A confirmed check uses a separate OAuth token, not the Gemini API key. GET https://apikeys.googleapis.com/v2/keys:lookupKey needs scope cloud-platform.read-only and permission apikeys.keys.lookup. Only the parent project from that response is accepted. A typed project ID is ignored. GET https://cloudbilling.googleapis.com/v1/projects/{projectId}/billingInfo on that parent needs resourcemanager.projects.get, and billingEnabled must be false. This build sends neither request. Free-tier prompts and responses may be used to improve Google products.",
                 onSave = { _, secret -> onSaveGemini(secret) },
                 onRemove = onRemoveGemini,
             )
@@ -184,7 +184,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.5.2. Free chat is assisted. Cloudflare and Gemini APIs stay off until a free plan is positively verified.")
+                Text("Version 0.5.3. Free chat is assisted. Automated inference stays off. Local inference is prepared and not installed.")
             }
         }
     }

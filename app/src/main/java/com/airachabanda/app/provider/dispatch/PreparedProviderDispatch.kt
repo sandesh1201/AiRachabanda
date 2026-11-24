@@ -12,6 +12,7 @@ import com.airachabanda.app.provider.cloudflare.CloudflareAdapter
 import com.airachabanda.app.provider.cloudflare.CloudflareOutcome
 import com.airachabanda.app.provider.gemini.GeminiAdapter
 import com.airachabanda.app.provider.gemini.GeminiOutcome
+import com.airachabanda.app.provider.local.LocalInferencePolicy
 import com.airachabanda.app.provider.openrouter.DispatchOutcome
 import com.airachabanda.app.provider.openrouter.OpenRouterFailure
 import com.airachabanda.app.provider.openrouter.ResponseDisposition
@@ -62,6 +63,20 @@ class PreparedProviderDispatch(
                 textGeneration = call.textGeneration,
                 positiveFreePlan = call.positiveFreePlan,
             ).toStored()
+            ProviderId.LOCAL -> return DispatchOutcome(
+                OpenRouterFailure.POLICY,
+                LocalInferencePolicy.prepare(
+                    LocalInferencePolicy.Selection(
+                        modelId = call.modelId,
+                        endpointHost = "127.0.0.1",
+                        cloudDisabled = true,
+                        contextTokens = LocalInferencePolicy.MAX_CONTEXT_TOKENS,
+                        timeoutMs = 30_000,
+                        budgetRemaining = sessionBudgetRemaining,
+                    ),
+                ).reason,
+                completed = false,
+            )
             ProviderId.GEMINI -> gemini.complete(
                 apiKey = call.secret,
                 modelId = call.modelId,

@@ -163,6 +163,17 @@ object ProviderRegistry {
             officialHttpsUrl = "https://developers.cloudflare.com/workers-ai/",
             prominent = false,
         ),
+        ProviderDefinition(
+            id = ProviderId.LOCAL,
+            displayName = "Local model",
+            kind = ProviderKind.INFERENCE_SERVICE,
+            summary = "Optional loopback runtime. It is not installed, it is not required for assisted chat, and it cannot call a cloud model.",
+            defaultParticipation = ParticipationMode.UNAVAILABLE,
+            defaultBilling = BillingEligibility.UNKNOWN,
+            defaultIntegration = IntegrationMethod.NONE,
+            officialHttpsUrl = null,
+            prominent = false,
+        ),
     )
 
     fun definition(id: ProviderId): ProviderDefinition = all.first { it.id == id }

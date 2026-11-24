@@ -110,6 +110,14 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - An assisted Council task shows the provider, role, task, prepared prompt, Copy and open chat, Import response, and the next pending task. The prompt states that the provider is not connected automatically.
 - Copy and open chat is an explicit action. The app does not read the clipboard.
 
+## Milestone 005E checks
+
+- Gemini key lookup accepts only the parent project of that key. A different typed project ID is rejected. The prepared billing URL is not requested.
+- Cloudflare rate plan id `free`, `partners_free`, an empty subscription list, and entitlement feature keys do not establish Workers Free.
+- A loopback `gemma3:1b` selection can be prepared and still cannot send. A cloud model name, a public host, and a missing runtime are rejected.
+- Two verified local model ids are classified as a cross-model review. The disclosure says agreement is not proof. No answer text is generated.
+- No inference runtime was installed and no model file was downloaded.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

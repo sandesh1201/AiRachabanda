@@ -15,10 +15,11 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 005B: OpenRouter metadata was not sent because no credential was stored. Billing safeguards were re-read. Cloudflare Workers AI and the Gemini API Free tier are the next provider candidates. Inference stays off.
 - Milestone 005C: Cloudflare and Gemini adapters, configuration screens, and provider-specific billing policies. Live metadata and live inference stay off.
 - Milestone 005D: Free chat is assisted for providers that publish an official chat. Free APIs stay off until billing protection is positively established.
+- Milestone 005E: Gemini key lookup and project billing are prepared and not sent. Cloudflare still cannot positively name Workers Free. A loopback local provider is prepared. No runtime, model download, or live request.
 
 ## Next
 
-The owner can enable additional free-chat participants in Settings. Cloudflare still needs a positive Workers Free verification before any API call. Gemini API billing still cannot be read from the API key. No live inference is authorized.
+The shortest automated path is a loopback model after the owner installs a local runtime and downloads one small model. Gemini can be the cloud path only after an owner-consented lookup shows the key's own project has billing disabled. No live inference is authorized.
 
 ## Later
 
