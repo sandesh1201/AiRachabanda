@@ -18,3 +18,4 @@ local.properties
 *.litertlm
 *.partial
 ondevice-models/
+release-assets/
