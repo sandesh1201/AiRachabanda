@@ -14,3 +14,7 @@ local.properties
 *.keystore
 *.log
 .cursor/
+.vscode/
+*.litertlm
+*.partial
+ondevice-models/

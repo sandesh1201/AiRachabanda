@@ -269,6 +269,12 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 - A fixture installer resumes a partial file, rejects a mismatched digest, and does not open a transfer for Gemma.
 - Task output stays inside the model context window. These checks do not download a model.
 
+## Milestone 015F checks
+
+- The publication audit finds no live credentials in Git history.
+- Qwen can start an in-app transfer only after confirmation and only through the supplied opener. Gemma does not open the network.
+- The release APK is debug-signed, contains the ARM64 CPU libraries, and does not contain model weights.
+
 ## Not yet run
 
 - A live OpenRouter metadata request. The owner has not confirmed one inside the app.

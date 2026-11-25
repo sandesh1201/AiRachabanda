@@ -22,6 +22,8 @@ class OnDeviceInstaller(
         availableBytes: Long,
         approved: Boolean,
         stopAfterBytes: Long = Long.MAX_VALUE,
+        stopWhen: () -> Boolean = { false },
+        onProgress: (Long) -> Unit = {},
     ): DownloadTicket {
         if (!model.fileName.endsWith(".litertlm") || model.fileName.contains("sm8650", ignoreCase = true)) {
             return DownloadTicket(model.id, DownloadState.BLOCKED, 0, "That file is not a CPU LiteRT-LM model.")
@@ -67,14 +69,21 @@ class OnDeviceInstaller(
             java.io.FileOutputStream(partial, true).use { output ->
                 val buffer = ByteArray(64 * 1024)
                 var written = offset
-                while (written < model.sizeBytes && written < stopAfterBytes) {
+                var sinceReport = 0L
+                while (written < model.sizeBytes && written < stopAfterBytes && !stopWhen()) {
                     val read = input.read(buffer)
                     if (read < 0) break
                     val room = minOf(read.toLong(), model.sizeBytes - written, stopAfterBytes - written).toInt()
                     if (room <= 0) break
                     output.write(buffer, 0, room)
                     written += room
+                    sinceReport += room
+                    if (sinceReport >= 1024 * 1024) {
+                        onProgress(written)
+                        sinceReport = 0
+                    }
                 }
+                onProgress(written)
             }
         }
         if (partial.length() < model.sizeBytes) {

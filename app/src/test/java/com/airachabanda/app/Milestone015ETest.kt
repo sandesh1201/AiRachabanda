@@ -115,4 +115,41 @@ class Milestone015ETest {
         assertEquals("", refused.text)
         root.deleteRecursively()
     }
+
+    @Test
+    fun qwenCanBeApprovedInTheAppAndGemmaStillDoesNotOpenTheNetwork() {
+        val root = File(System.getProperty("java.io.tmpdir"), "airachabanda-015f-${System.nanoTime()}")
+        val directory = OnDevicePreflight.modelDirectory(root)
+        val manager = OnDeviceModelManager()
+        var opens = 0
+        val gemma = manager.download(
+            OnDeviceModelCatalog.GEMMA.id,
+            consent = true,
+            availableBytes = 8L shl 30,
+            directory = directory,
+            opener = { _, _ ->
+                opens += 1
+                ByteArrayInputStream(ByteArray(0))
+            },
+        )
+        assertEquals(DownloadState.BLOCKED, gemma.state)
+        assertEquals(0, opens)
+        assertTrue(gemma.detail.contains("No trusted SHA-256"))
+        val qwen = manager.download(
+            OnDeviceModelCatalog.QWEN.id,
+            consent = true,
+            availableBytes = 8L shl 30,
+            directory = directory,
+            opener = { url, _ ->
+                opens += 1
+                assertTrue(url.startsWith("https://"))
+                ByteArrayInputStream(ByteArray(0))
+            },
+        )
+        assertEquals(1, opens)
+        assertEquals(DownloadState.INTERRUPTED, qwen.state)
+        assertTrue(qwen.detail.contains("partial file remains"))
+        assertFalse(manager.enable(OnDeviceModelCatalog.QWEN.id, directory).enabled)
+        root.deleteRecursively()
+    }
 }

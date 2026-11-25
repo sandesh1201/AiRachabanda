@@ -1,6 +1,7 @@
 package com.airachabanda.app.provider.local.ondevice
 
 import java.io.File
+import java.io.InputStream
 import java.security.MessageDigest
 
 enum class DownloadState { NOT_INSTALLED, BLOCKED, CANCELLED, INTERRUPTED, REJECTED, INSTALLED }
@@ -27,7 +28,15 @@ class OnDeviceModelManager {
     fun status(modelId: String): DownloadTicket =
         tickets[modelId] ?: DownloadTicket(modelId, DownloadState.NOT_INSTALLED, 0, "No model file is stored on this device.")
 
-    fun download(modelId: String, consent: Boolean, availableBytes: Long): DownloadTicket {
+    fun download(
+        modelId: String,
+        consent: Boolean,
+        availableBytes: Long,
+        directory: File? = null,
+        opener: ((url: String, offset: Long) -> InputStream)? = null,
+        stopWhen: () -> Boolean = { false },
+        onProgress: (Long) -> Unit = {},
+    ): DownloadTicket {
         val model = OnDeviceModelCatalog.find(modelId)
             ?: return remember(DownloadTicket(modelId, DownloadState.BLOCKED, 0, "That model is not in the recommended catalog."))
         if (!OnDeviceModelCatalog.compatible(model)) {
@@ -57,7 +66,7 @@ class OnDeviceModelManager {
                 ),
             )
         }
-        if (!OnDeviceRuntime.OWNER_DOWNLOAD_APPROVED) {
+        if (directory == null || opener == null) {
             return remember(
                 DownloadTicket(
                     model.id,
@@ -67,7 +76,17 @@ class OnDeviceModelManager {
                 ),
             )
         }
-        return remember(DownloadTicket(model.id, DownloadState.BLOCKED, 0, "The transfer path is closed in this build."))
+        val installer = OnDeviceInstaller(directory, opener)
+        val ticket = installer.install(
+            model,
+            consent = true,
+            availableBytes = availableBytes,
+            approved = true,
+            stopWhen = stopWhen,
+            onProgress = onProgress,
+        )
+        networkRequests += installer.networkOpens
+        return remember(ticket)
     }
 
     fun cancel(modelId: String): DownloadTicket {
@@ -84,8 +103,15 @@ class OnDeviceModelManager {
     fun delete(modelId: String): DownloadTicket =
         remember(DownloadTicket(modelId, DownloadState.NOT_INSTALLED, 0, "No model file is stored on this device."))
 
-    fun enable(modelId: String): EnableDecision =
-        EnableDecision(false, "Enable stays off until a verified model file is installed. ${status(modelId).detail}")
+    fun enable(modelId: String, directory: File? = null): EnableDecision {
+        val model = OnDeviceModelCatalog.find(modelId)
+        val file = if (model == null || directory == null) null else OnDevicePreflight.verifiedFile(directory, model)
+        return if (file == null) {
+            EnableDecision(false, "Enable stays off until a verified model file is installed. ${status(modelId).detail}")
+        } else {
+            EnableDecision(true, "${model!!.displayName} is enabled for local inference. Runtime ${OnDeviceRuntime.PINNED_VERSION}.")
+        }
+    }
 
     fun verifyIntegrity(bytes: ByteArray, expectedSha256: String): IntegrityResult {
         val expected = expectedSha256.trim().lowercase()

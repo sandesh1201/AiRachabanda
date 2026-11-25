@@ -141,6 +141,8 @@ Milestone 015D keeps schema version 9. LiteRT-LM is the prepared on-device runti
 
 Milestone 015E keeps schema version 9. LiteRT-LM 0.20.0 is packaged for CPU after the owner approved that runtime. The GPU artifact is excluded. The CPU Gemma and Qwen file names, revisions, and sizes are recorded. Gemma has no pinned SHA-256 until its license is accepted by the owner. Model weights are not transferred. No live inference request is added by the milestone itself.
 
+Milestone 015F publishes that build for private testing. The release APK is debug-signed. Qwen can be downloaded inside the app after confirmation when storage is sufficient. Gemma stays blocked. No model weights are bundled or downloaded during publication.
+
 ## Toolchain pin for Milestone 003
 
 The installed Android SDK includes platforms 34 through 36 and does not include platform 37. Compose BOM 2026.08.00 and later require compile SDK 37, so this project uses Compose BOM 2026.06.01 with compile SDK 36. Android Gradle Plugin 8.13.2 and Gradle 8.14 match that SDK and the installed Android Studio 2025.3.2 build. Newer plugin releases are not required for this milestone.

@@ -15,14 +15,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.airachabanda.app.provider.local.ondevice.HttpsModelSource
 import com.airachabanda.app.provider.local.ondevice.LiteRtLmRuntime
+import com.airachabanda.app.provider.local.ondevice.OnDevicePreflight
 import com.airachabanda.app.provider.local.ondevice.LocalTask
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.local.ondevice.OnDeviceModelManager
@@ -36,6 +41,10 @@ fun LocalAiPanel() {
     var confirmDownload by rememberSaveable { mutableStateOf(false) }
     var message by rememberSaveable { mutableStateOf("No model file is stored on this device.") }
     var library by remember { mutableStateOf("Checking the CPU library.") }
+    var busy by remember { mutableStateOf(false) }
+    val cancelDownload = remember { AtomicBoolean(false) }
+    val scope = rememberCoroutineScope()
+    val directory = remember { OnDevicePreflight.modelDirectory(context.filesDir).apply { mkdirs() } }
     LaunchedEffect(Unit) {
         library = withContext(Dispatchers.IO) { LiteRtLmRuntime.probe() }
     }
@@ -78,28 +87,60 @@ fun LocalAiPanel() {
         Text(selected.qualityNote, style = MaterialTheme.typography.bodySmall)
         Text("Free space on this device: $available bytes.", style = MaterialTheme.typography.bodySmall)
         Text(message, style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = { confirmDownload = true }, modifier = Modifier.fillMaxWidth()) { Text("Download") }
+        Button(onClick = { confirmDownload = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Download") }
+        if (busy) {
+            TextButton(onClick = { cancelDownload.set(true) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel download") }
+        }
         Button(
-            onClick = { message = manager.enable(selected.id).detail },
-            enabled = false,
+            onClick = { message = manager.enable(selected.id, directory).detail },
+            enabled = OnDevicePreflight.verifiedFile(directory, selected) != null,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Enable") }
     }
     if (confirmDownload) {
+        val pinned = selected.sha256 != null
         AlertDialog(
             onDismissRequest = { confirmDownload = false },
             title = { Text("Download") },
             text = {
                 Text(
-                    "${selected.displayName} is ${selected.sizeLabel} under ${selected.licenseName}. " +
-                        "The file is ${selected.fileName}. Free space is $available bytes. " +
-                        "This build does not transfer the file. Owner approval is required before any download.",
+                    if (pinned) {
+                        "${selected.displayName} is ${selected.sizeLabel} under ${selected.licenseName}. " +
+                            "The file is ${selected.fileName}. Free space is $available bytes. " +
+                            "Confirming downloads it into private app storage and checks the SHA-256 before installation."
+                    } else {
+                        "${selected.displayName} is ${selected.sizeLabel} under ${selected.licenseName}. " +
+                            "The file is ${selected.fileName}. No trusted SHA-256 is pinned. " +
+                            "Confirming will not download the file."
+                    },
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDownload = false
-                    message = manager.download(selected.id, consent = true, availableBytes = available).detail
+                    if (!pinned) {
+                        message = manager.download(selected.id, consent = true, availableBytes = available).detail
+                        return@TextButton
+                    }
+                    cancelDownload.set(false)
+                    busy = true
+                    scope.launch {
+                        val ticket = withContext(Dispatchers.IO) {
+                            manager.download(
+                                selected.id,
+                                consent = true,
+                                availableBytes = available,
+                                directory = directory,
+                                opener = HttpsModelSource::open,
+                                stopWhen = { cancelDownload.get() },
+                                onProgress = { written ->
+                                    scope.launch { message = "Downloaded $written of ${selected.sizeBytes} bytes." }
+                                },
+                            )
+                        }
+                        message = ticket.detail
+                        busy = false
+                    }
                 }) { Text("Download") }
             },
             dismissButton = { TextButton(onClick = { confirmDownload = false }) { Text("Cancel") } },
