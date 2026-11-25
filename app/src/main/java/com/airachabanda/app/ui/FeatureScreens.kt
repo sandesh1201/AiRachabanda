@@ -21,7 +21,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -87,10 +94,12 @@ fun HomeScreen(
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     var mode by rememberSaveable(defaultMode.name) { mutableStateOf(defaultMode) }
-    var showProviders by rememberSaveable { mutableStateOf(false) }
+    var learnMore by rememberSaveable { mutableStateOf(false) }
+    val assisted = ProviderAccess.assistedProviders().map { ProviderRegistry.definition(it).displayName }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp).imePadding(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 20.dp).imePadding(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 28.dp, bottom = 24.dp),
     ) {
         item {
             Text(
@@ -105,20 +114,15 @@ fun HomeScreen(
             )
         }
         item {
-            Text("New discussion", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text("Question") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Ask a question") },
                 minLines = 3,
             )
-            Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            if (mode == ResearchMode.CUSTOM) {
-                Text(ModeGuide.customDetail(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-            }
             FlowRow(
-                Modifier.padding(top = 8.dp),
+                Modifier.padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -130,63 +134,50 @@ fun HomeScreen(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                Button(
-                    onClick = {
-                        onStart(draft, mode)
-                        draft = ""
-                    },
-                    enabled = draft.isNotBlank(),
-                ) { Text("Start discussion") }
-                OutlinedButton(onClick = onOpenCouncil) { Text("Open Council") }
+            TextButton(onClick = { learnMore = !learnMore }) { Text(if (learnMore) "Hide details" else "Learn more") }
+            if (learnMore) {
+                Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall)
             }
             Text(
-                "Start discussion creates a conversation and keeps the question on this device. Attachments are added inside the Council.",
+                "No automatic AI is connected. You can still start, then copy a prompt into ${assisted.take(3).joinToString(", ")}.",
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            Button(
+                onClick = {
+                    onStart(draft, mode)
+                    draft = ""
+                },
+                enabled = draft.isNotBlank(),
+                modifier = Modifier.padding(top = 12.dp).height(48.dp),
+            ) { Text("Send") }
         }
         item {
-            Text("Quick actions", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                FilterChip(selected = mode == ResearchMode.DEEP_RESEARCH, onClick = { mode = ResearchMode.DEEP_RESEARCH }, label = { Text("Research") })
-                FilterChip(selected = false, onClick = onOpenCouncil, label = { Text("Document analysis") })
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                FilterChip(selected = false, onClick = onOpenCouncil, label = { Text("Document creation") })
-                FilterChip(selected = mode == ResearchMode.STANDARD, onClick = { mode = ResearchMode.STANDARD }, label = { Text("AI discussion") })
-            }
+            Text("Available", style = MaterialTheme.typography.titleMedium)
+            Text(providerSummary(providers, enabledProviders), style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onOpenSettings) { Text("AI providers") }
         }
         item {
-            Text("Recent conversations", style = MaterialTheme.typography.titleMedium)
+            Text("Recent", style = MaterialTheme.typography.titleMedium)
             if (conversations.isEmpty()) {
-                EmptyPanel("No conversation is stored on this device yet.")
+                Text("Your conversations will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        items(conversations.take(4), key = { it.id }) { conversation ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(conversation.title, style = MaterialTheme.typography.titleSmall)
-                    Text(conversation.researchMode.label(), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { onOpenConversation(conversation.id) }) { Text("Continue") }
+        items(conversations.take(6), key = { it.id }) { conversation ->
+            Card(onClick = { onOpenConversation(conversation.id) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(conversation.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text(conversation.researchMode.label(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         item {
-            Text("Providers", style = MaterialTheme.typography.titleMedium)
-            Text(providerSummary(providers, enabledProviders), modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "Zero-cost mode is on. An unconfigured provider is not connected.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            TextButton(onClick = onOpenSettings) { Text("Provider settings") }
-            TextButton(onClick = { showProviders = !showProviders }) {
-                Text(if (showProviders) "Hide provider actions" else "Provider actions")
-            }
-        }
-        if (showProviders) {
-            items(providers, key = { "provider-${it.providerId.name}" }) { config ->
-                ProviderCard(config, onOpenUrl, onOpenCouncil, onOpenAccount)
+            Text("Try", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = false, onClick = { mode = ResearchMode.DEEP_RESEARCH }, label = { Text("Research") })
+                FilterChip(selected = false, onClick = { mode = ResearchMode.STANDARD }, label = { Text("Compare views") })
+                FilterChip(selected = false, onClick = onOpenCouncil, label = { Text("Open chat") })
             }
         }
     }
@@ -310,6 +301,9 @@ fun CouncilScreen(
         mutableStateOf(enabledProviders.joinToString(","))
     }
     var confirmStop by rememberSaveable { mutableStateOf(false) }
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    var showDocuments by rememberSaveable { mutableStateOf(false) }
+    var overflow by rememberSaveable { mutableStateOf(false) }
     var technical by rememberSaveable { mutableStateOf(false) }
     var supportPane by rememberSaveable { mutableStateOf(SupportPane.PARTICIPANTS.name) }
     var conversationOnly by rememberSaveable { mutableStateOf(false) }
@@ -327,81 +321,74 @@ fun CouncilScreen(
     val selectedProviders = selectedRaw.split(',').mapNotNull { name ->
         runCatching { ProviderId.valueOf(name) }.getOrNull()
     }.toSet()
-    Column(Modifier.fillMaxSize().imePadding().padding(contentPadding).padding(horizontal = 16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { onNewChat(mode) }) { Text("New Chat") }
-            Text("Research mode", style = MaterialTheme.typography.labelLarge)
-        }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 8.dp),
-            ) {
-            ResearchMode.entries.forEach { entry ->
-                FilterChip(
-                    selected = mode == entry,
-                    onClick = {
-                        mode = entry
-                        conversation?.let { onModeChange(entry) }
-                    },
-                    label = { Text(entry.label()) },
+    val phase = DiscussionPresence.phase(stage?.stage)
+    Column(Modifier.fillMaxSize().imePadding().padding(contentPadding)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Text(
+                    conversation?.title ?: "Chat",
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                )
+                Text(
+                    "${mode.label()} · ${DiscussionPresence.summary(stage?.stage, stage?.pendingTasks ?: 0)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
             }
-        }
-        Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall)
-        if (mode == ResearchMode.CUSTOM) {
-            Text(ModeGuide.customDetail(), style = MaterialTheme.typography.bodySmall)
+            Box {
+                IconButton(onClick = { overflow = true }) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "Chat menu")
+                }
+                DropdownMenu(expanded = overflow, onDismissRequest = { overflow = false }) {
+                    DropdownMenuItem(text = { Text("Details") }, onClick = { overflow = false; showDetails = true })
+                    DropdownMenuItem(text = { Text("New chat") }, onClick = { overflow = false; onNewChat(mode) })
+                    DropdownMenuItem(text = { Text("Create document") }, onClick = { overflow = false; showDocuments = true })
+                    DropdownMenuItem(text = { Text("Finish now") }, onClick = { overflow = false; onFinish() })
+                    ResearchMode.entries.forEach { entry ->
+                        DropdownMenuItem(text = { Text(entry.label()) }, onClick = {
+                            overflow = false
+                            mode = entry
+                            conversation?.let { onModeChange(entry) }
+                        })
+                    }
+                }
+            }
         }
         if (conversation == null) {
-            EmptyPanel(
-                "No conversation is open. Create a chat to prepare an assisted prompt. No provider is ready for automated discussion.",
-            )
+            EmptyPanel("Start a conversation from Home, or choose New chat.")
             return
         }
         val showFilesInConversation = width != AdaptiveWidth.EXPANDED || conversationOnly || fold.tabletop
         val discussion = @Composable {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(conversation.title, style = MaterialTheme.typography.titleLarge, maxLines = 2)
                 val people = stage?.participantControls.orEmpty()
-                Text(
-                    if (people.isEmpty()) "No participants are assigned yet."
-                    else people.joinToString(" · ") { "${it.label} ${it.availability}" },
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                )
-                Text(
-                    "A message labeled You is yours. User-supplied, provider-attributed text was pasted by you. A local calculation is arithmetic on this device. A retrieved source has not been verified. A record-based synthesis uses stored findings.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                if (people.isNotEmpty()) {
+                    Text(
+                        people.joinToString(" · ") { it.label },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
                 if (messages.isEmpty()) {
-                    EmptyPanel("No messages yet. A message you add stays on this device until you submit it yourself through the provider.")
+                    EmptyPanel(
+                        if (phase == DiscussionPresence.WAITING) {
+                            "Your question is in the title. Open Details to copy a prompt into an assistant."
+                        } else {
+                            "Ask a question to begin. Nothing is sent until you choose Send."
+                        },
+                    )
                 } else {
                     messages.forEach { message -> MessageCard(message) }
                 }
-                androidx.compose.material3.OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Message") },
-                    minLines = 2,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            onAddMessage(draft)
-                            draft = ""
-                        },
-                        enabled = draft.isNotBlank(),
-                    ) { Text("Add message") }
-                    OutlinedButton(onClick = onAttach) { Text("Attach") }
-                }
-                Text(
-                    "Add message stores your text locally. It does not contact a provider. ${DocumentLimits.EXPLANATION}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (showFilesInConversation && attachments.isEmpty()) {
+                if (showDocuments && showFilesInConversation && attachments.isEmpty()) {
                     Text("No file is attached. Choosing a file copies it into app storage. It is not uploaded.")
-                } else if (showFilesInConversation) {
+                } else if (showDocuments && showFilesInConversation) {
                     val consent = attachments.any { it.includedInPrompt }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = consent, onCheckedChange = onAttachmentConsent)
@@ -434,7 +421,7 @@ fun CouncilScreen(
                     }
                     if (inspectedAttachment.isNotBlank()) Text(inspectedAttachment)
                 }
-                if (showFilesInConversation) LocalDocuments(
+                if (showDocuments && showFilesInConversation) LocalDocuments(
                     documents = documents,
                     preview = documentPreview,
                     onGenerate = onGenerateDocument,
@@ -700,18 +687,6 @@ fun CouncilScreen(
                 }
             }
         }
-        Column(
-            Modifier.zIndex(1f).background(MaterialTheme.colorScheme.background).padding(bottom = 8.dp),
-        ) {
-            DiscussionControls(
-                stage = stage,
-                notificationsAllowed = notificationsAllowed,
-                onPause = onPause,
-                onResume = onResume,
-                onStop = requestStop,
-                onFinish = onFinish,
-            )
-        }
         val discussionActions = @Composable {
             val skippable = stage?.participantControls?.firstOrNull { it.availability == "ELIGIBLE" }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -762,46 +737,82 @@ fun CouncilScreen(
                 }
             }
         }
-        val sideBySide = width == AdaptiveWidth.EXPANDED && !conversationOnly && !fold.tabletop
-        if (fold.tabletop) {
+        val detailsOpen = showDetails && !conversationOnly
+        val sideBySide = width == AdaptiveWidth.EXPANDED && detailsOpen && !fold.tabletop
+        if (fold.tabletop && detailsOpen) {
             Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                Column(Modifier.weight(1f).verticalScroll(messageScroll)) {
-                    discussionActions()
-                    discussion()
-                }
+                Column(Modifier.weight(1f).verticalScroll(messageScroll).padding(horizontal = 16.dp)) { discussion() }
                 androidx.compose.foundation.layout.Spacer(Modifier.height(fold.gapDp.dp))
-                Column(Modifier.weight(1f).verticalScroll(supportScroll)) {
+                Column(Modifier.weight(1f).verticalScroll(supportScroll).padding(horizontal = 16.dp)) {
                     paneChips()
                     answer(selectedSupport)
                 }
             }
         } else if (sideBySide) {
-            Row(Modifier.weight(1f).fillMaxWidth().clipToBounds(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.weight(1.2f).verticalScroll(messageScroll)) {
-                    discussionActions()
-                    discussion()
-                }
+            Row(Modifier.weight(1f).fillMaxWidth().clipToBounds(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1.4f).verticalScroll(messageScroll).padding(horizontal = 16.dp)) { discussion() }
                 if (fold.vertical && fold.gapDp > 0) {
                     androidx.compose.foundation.layout.Spacer(Modifier.width(fold.gapDp.dp))
                 }
-                Column(Modifier.weight(1f).verticalScroll(supportScroll)) {
+                Column(Modifier.weight(0.9f).verticalScroll(supportScroll).padding(horizontal = 16.dp)) {
                     paneChips()
                     answer(selectedSupport)
                 }
             }
         } else {
-            Column(
-                Modifier.weight(1f).clipToBounds().verticalScroll(messageScroll),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                paneChips()
-                discussionActions()
-                if (conversationOnly || selectedCompact == SupportPane.CONVERSATION) {
-                    discussion()
-                }
-                if (!conversationOnly && selectedCompact != SupportPane.CONVERSATION) {
+            Column(Modifier.weight(1f).clipToBounds().verticalScroll(messageScroll).padding(horizontal = 16.dp)) {
+                discussion()
+                if (detailsOpen) {
+                    paneChips()
                     answer(selectedCompact)
                 }
+            }
+        }
+        if (phase == DiscussionPresence.RUNNING || phase == DiscussionPresence.PAUSED) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (phase == DiscussionPresence.RUNNING) {
+                    OutlinedButton(onClick = onPause, modifier = Modifier.semantics { contentDescription = "Pause the discussion" }) { Text("Pause") }
+                } else {
+                    Button(onClick = onResume, modifier = Modifier.semantics { contentDescription = "Resume the discussion" }) { Text("Resume") }
+                }
+                OutlinedButton(onClick = requestStop, modifier = Modifier.semantics { contentDescription = "Stop the discussion" }) { Text("Stop") }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            IconButton(onClick = onAttach, modifier = Modifier.semantics { contentDescription = "Attach a file" }) {
+                Icon(Icons.Outlined.AttachFile, contentDescription = null)
+            }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Message") },
+                maxLines = 5,
+            )
+            IconButton(
+                onClick = {
+                    if (phase == DiscussionPresence.RUNNING) {
+                        requestStop()
+                    } else if (draft.isNotBlank()) {
+                        val text = draft
+                        draft = ""
+                        onAddMessage(text)
+                        if (stage?.sessionId == null) onStart(text, selectedProviders) else onFollowUp(text)
+                    }
+                },
+                enabled = phase == DiscussionPresence.RUNNING || draft.isNotBlank(),
+                modifier = Modifier.semantics { contentDescription = if (phase == DiscussionPresence.RUNNING) "Stop generation" else "Send" },
+            ) {
+                Icon(
+                    if (phase == DiscussionPresence.RUNNING) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send,
+                    contentDescription = null,
+                )
             }
         }
         if (confirmStop) {
@@ -901,6 +912,8 @@ private fun LocalDocuments(
     var template by rememberSaveable { mutableStateOf("business-report") }
     var format by rememberSaveable { mutableStateOf(OutputFormat.PDF.name) }
     var includeRecords by rememberSaveable { mutableStateOf(false) }
+    var blankTemplate by rememberSaveable { mutableStateOf(false) }
+    var showFormatting by rememberSaveable { mutableStateOf(false) }
     var templateMenu by rememberSaveable { mutableStateOf(false) }
     var formatMenu by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf("") }
@@ -918,10 +931,13 @@ private fun LocalDocuments(
         label = { Text("Content") },
         minLines = 3,
     )
-    Text(
-        "Plain lines become paragraphs. ROW| cells, ITEM| bullets, AMOUNT|name|number, COMPARE|name|left|right, DATE, RATE, MATH, and LINK|label|https:// are recognized. No provider is contacted.",
-        style = MaterialTheme.typography.bodySmall,
-    )
+    TextButton(onClick = { showFormatting = !showFormatting }) { Text(if (showFormatting) "Hide formatting" else "Formatting") }
+    if (showFormatting) {
+        Text(
+            "Plain lines become paragraphs. Optional markers: ROW| cells, ITEM| bullets, AMOUNT|name|number, COMPARE|name|left|right, DATE, RATE, MATH, and LINK|label|https://. No provider is contacted.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box {
             OutlinedButton(onClick = { templateMenu = true }) { Text(DocumentTemplates.label(template)) }
@@ -948,12 +964,16 @@ private fun LocalDocuments(
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = includeRecords, onCheckedChange = { includeRecords = it })
-        Text("Include stored messages, evidence, and objections. No provider is contacted.")
+        Text("Include this conversation")
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = blankTemplate, onCheckedChange = { blankTemplate = it })
+        Text("Create a blank template")
     }
     Button(
         onClick = { onGenerate(title, template, format, body, includeRecords) },
-        enabled = title.isNotBlank(),
-    ) { Text("Generate") }
+        enabled = title.isNotBlank() && (body.isNotBlank() || includeRecords || blankTemplate),
+    ) { Text("Create") }
     if (documents.isEmpty()) {
         Text("No document has been rendered in this conversation.")
     }
@@ -963,7 +983,11 @@ private fun LocalDocuments(
         item.previewPath?.let { path ->
             val bitmap = BitmapFactory.decodeFile(path)
             if (bitmap != null) {
-                Image(bitmap = bitmap.asImageBitmap(), contentDescription = item.title, modifier = Modifier.width(180.dp).height(240.dp))
+                Box(
+                    Modifier.background(androidx.compose.ui.graphics.Color.White).padding(8.dp),
+                ) {
+                    Image(bitmap = bitmap.asImageBitmap(), contentDescription = item.title, modifier = Modifier.width(180.dp).height(240.dp))
+                }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1070,7 +1094,7 @@ fun HistoryScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
-            Text("History", style = MaterialTheme.typography.headlineSmall)
+            Text("Chats", style = MaterialTheme.typography.headlineSmall)
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },

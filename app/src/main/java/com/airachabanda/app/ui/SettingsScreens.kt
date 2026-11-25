@@ -58,22 +58,17 @@ fun SettingsRoot(
     contentPadding: PaddingValues,
 ) {
     val entries = listOf(
-        "AI providers" to listOf(
-            "providers" to "Provider participation",
-            "accounts" to "Account declarations",
-            "plans" to "Subscription declarations",
-            "usage" to "Usage and limits",
-            "openrouter" to "OpenRouter",
-            "cloudflare" to "Cloudflare Workers AI",
-            "gemini" to "Gemini API",
-            "zerocost" to "Zero-cost policy",
+        "AI Providers" to listOf(
+            "providers" to "AI providers",
+            "setup/LOCAL" to "Local AI",
         ),
         "Appearance" to listOf("appearance" to "Light, dark, and system"),
-        "Discussion defaults" to listOf("research" to "Rounds, requests, sources, and deadline"),
-        "Research preferences" to listOf("research" to "Public research stays consent-based"),
-        "Privacy and security" to listOf("privacy" to "On-device storage and redaction"),
+        "Preferences" to listOf("research" to "Discussion preferences"),
         "Notifications" to listOf("notifications" to "Discussion notification"),
-        "Local storage" to listOf("storage" to "Delete local data"),
+        "Privacy and Storage" to listOf(
+            "privacy" to "Privacy",
+            "storage" to "Storage",
+        ),
         "About" to listOf("about" to "Version and limits"),
     )
     LazyColumn(
@@ -83,7 +78,6 @@ fun SettingsRoot(
     ) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp))
-            Text("Zero-cost mode is on. This version does not offer a subscription, an advertisement, or a purchase.")
         }
         entries.forEach { (group, links) ->
             item { Text(group, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp)) }
@@ -214,7 +208,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.15.7. Connect checks the account before automated use. Free chat is assisted. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. On-device LiteRT-LM 0.20.0 is packaged for CPU and no model file is installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
+                Text("Version 0.16.0. Connect checks the account before automated use. Free chat is assisted. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. On-device LiteRT-LM 0.20.0 is packaged for CPU and no model file is installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
             }
         }
     }
@@ -664,9 +658,10 @@ private fun ProviderAccessSettings(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("All") }
+    var advanced by rememberSaveable { mutableStateOf(false) }
     Text("AI Providers", style = MaterialTheme.typography.headlineSmall)
-    Text("Choose a provider, enter a key or use its official sign-in, then tap Connect. Ready appears only after free access is verified. Stored keys are not shown.")
-    Text("Zero-cost mode is on. Paid inference is not offered.")
+    Text("Enter a key or use official sign-in, then tap Connect.")
+    TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced details" else "Advanced details") }
     OutlinedTextField(
         value = query,
         onValueChange = { query = it },
@@ -711,13 +706,9 @@ private fun ProviderAccessSettings(
             Column(Modifier.weight(1f)) {
                 Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
                 Text(status, style = MaterialTheme.typography.labelLarge)
-                Text(ConnectionPresentation.explanation(status, id), style = MaterialTheme.typography.bodySmall)
-                config?.let { item ->
-                    val kind = ProviderPresentation.kind(item)
-                    if (kind != status) Text(kind, style = MaterialTheme.typography.bodySmall)
-                }
-                Text(profile.note, style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { onConfigure(id) }) { Text("Set up") }
+                Text(ConnectionPresentation.explanation(status, id), style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                TextButton(onClick = { onConfigure(id) }) { Text(if (configured) "Manage" else "Connect") }
+                if (advanced) Text(profile.note, style = MaterialTheme.typography.bodySmall)
             }
             if (canToggle) {
                 Switch(

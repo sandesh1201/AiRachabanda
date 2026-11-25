@@ -5,13 +5,16 @@ import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -48,9 +51,8 @@ private data class Destination(val route: String, val label: String, val icon: I
 
 private val destinations = listOf(
     Destination("home", "Home", Icons.Outlined.Home),
-    Destination("council", "AI Council", Icons.Outlined.Forum),
-    Destination("activity", "Activity", Icons.Outlined.Timeline),
-    Destination("history", "History", Icons.Outlined.History),
+    Destination("council", "Chat", Icons.Outlined.Forum),
+    Destination("history", "Chats", Icons.Outlined.History),
     Destination("settings", "Settings", Icons.Outlined.Settings),
 )
 
@@ -67,6 +69,8 @@ fun AIRachabandaApp(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val factory = remember { appViewModelFactory(application.container) }
+    val historyModel: HistoryViewModel = viewModel(factory = factory)
+    val listedConversations by historyModel.conversations.collectAsState()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val topLevelRoute = destinations.firstOrNull { destination ->
@@ -134,6 +138,25 @@ fun AIRachabandaApp(
                             icon = { Icon(destination.icon, contentDescription = destination.label) },
                             label = { Text(destination.label) },
                         )
+                    }
+                }
+            }
+            val showConversationList = width == AdaptiveWidth.EXPANDED && (
+                currentRoute == "history" || currentRoute == "council" || currentRoute?.startsWith("council/") == true
+                )
+            if (showConversationList) {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    Modifier
+                        .width(280.dp)
+                        .fillMaxHeight()
+                        .padding(padding),
+                ) {
+                    items(listedConversations, key = { it.id }) { conversation ->
+                        androidx.compose.material3.TextButton(
+                            onClick = { navController.navigate("council/${conversation.id}") { launchSingleTop = true } },
+                        ) {
+                            Text(conversation.title, maxLines = 1)
+                        }
                     }
                 }
             }
@@ -399,6 +422,7 @@ private fun CouncilRoute(
         val pending = application.container.pendingDiscussion ?: return@LaunchedEffect
         if (pending.conversationId != id) return@LaunchedEffect
         application.container.pendingDiscussion = null
+        model.addMessage(id, pending.question)
         model.start(id, pending.question, pending.mode, pending.participants, notice)
     }
     val conversations by model.conversations.collectAsState()

@@ -10,6 +10,30 @@ import com.airachabanda.app.provider.AccessLabel
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderAccessMode
 
+object DiscussionPresence {
+    const val READY = "Ready"
+    const val RUNNING = "Running"
+    const val PAUSED = "Paused"
+    const val WAITING = "Waiting for you"
+    const val FINISHED = "Finished"
+
+    fun phase(stage: String?): String = when (stage) {
+        null, "", "No session" -> READY
+        "Paused" -> PAUSED
+        "Waiting for your response" -> WAITING
+        "Completed", "Stopped", "Failed", "Blocked" -> FINISHED
+        else -> RUNNING
+    }
+
+    fun summary(stage: String?, pending: Int): String = when (phase(stage)) {
+        READY -> "Ready to start"
+        PAUSED -> "Paused"
+        WAITING -> "Waiting for your reply"
+        FINISHED -> stage ?: FINISHED
+        else -> if (pending > 0) "${stage ?: RUNNING} · $pending still open" else stage ?: RUNNING
+    }
+}
+
 object ModeGuide {
     fun summary(mode: ResearchMode): String = when (mode) {
         ResearchMode.QUICK ->

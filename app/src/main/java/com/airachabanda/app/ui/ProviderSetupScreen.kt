@@ -138,9 +138,6 @@ fun ProviderSetupScreen(
         Text(connection, style = MaterialTheme.typography.titleMedium)
         Text(ConnectionPresentation.explanation(connection, spec.id))
         if (result.isNotBlank()) Text(result, style = MaterialTheme.typography.bodyMedium)
-        eligibility.lines().forEach { line ->
-            Text(line, style = MaterialTheme.typography.bodySmall)
-        }
         if (assisted && signIn != null) {
             Button(onClick = { onOpenUrl(signIn.url) }, modifier = Modifier.fillMaxWidth()) { Text("Official sign-in") }
         }
@@ -191,6 +188,9 @@ fun ProviderSetupScreen(
         }
         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced details" else "Advanced details") }
         if (advanced) {
+            eligibility.lines().forEach { line ->
+                Text(line, style = MaterialTheme.typography.bodySmall)
+            }
             Text(ProviderPresentation.status(config, enabled = enabled, credentialStored = credentialStored), style = MaterialTheme.typography.labelLarge)
             Text(ProviderPresentation.blocker(ProviderPresentation.status(config, enabled = enabled, credentialStored = credentialStored)))
             Text("Access method", style = MaterialTheme.typography.titleSmall)
