@@ -257,8 +257,8 @@ On the same Pixel 9a guest, with the 0.5.2 debug build installed:
 
 ## Milestone 015D checks
 
-- LiteRT-LM is the selected runtime and is not packaged. Gemma and Qwen are the two recommended families.
-- A consented download with enough storage still transfers nothing, because owner approval is closed. A short storage check and a missing digest stay blocked.
+- Milestone 015D selected LiteRT-LM and left it unpackaged. The current build packages LiteRT-LM 0.20.0 for CPU. Gemma and Qwen remain the two recommended families.
+- At Milestone 015D a consented download transferred nothing. Gemma still does not open the network. Qwen can transfer only after confirmation, which Milestone 015F checks. A short storage check and a missing digest stay blocked.
 - One model can be resident. A second load waits until the first is unloaded. A late generation id is rejected.
 - Fixture text is labeled and is not treated as model output. A local failure leaves the other participant in the council list.
 

@@ -141,7 +141,7 @@ Milestone 015D keeps schema version 9. LiteRT-LM is the prepared on-device runti
 
 Milestone 015E keeps schema version 9. LiteRT-LM 0.20.0 is packaged for CPU after the owner approved that runtime. The GPU artifact is excluded. The CPU Gemma and Qwen file names, revisions, and sizes are recorded. Gemma has no pinned SHA-256 until its license is accepted by the owner. Model weights are not transferred. No live inference request is added by the milestone itself.
 
-Milestone 015F publishes that build for private testing. The release APK is debug-signed. Qwen can be downloaded inside the app after confirmation when storage is sufficient. Gemma stays blocked. No model weights are bundled or downloaded during publication.
+Milestone 015F publishes that build for private testing. The release APK is debug-signed. Qwen can be downloaded inside the app after confirmation when storage is sufficient. Gemma stays blocked. No model weights are bundled or downloaded during publication. The current testing APK is also stored at `APK/AI-Rachabanda-Latest.apk` and is replaced in place for a later build.
 
 ## Toolchain pin for Milestone 003
 

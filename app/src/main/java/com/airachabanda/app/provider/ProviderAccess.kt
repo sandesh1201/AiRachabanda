@@ -94,7 +94,7 @@ object ProviderAccess {
         modes = setOf(ProviderAccessMode.LOCAL_INFERENCE),
         chatUrl = null,
         labels = listOf(AccessLabel.LOCAL_INFERENCE, AccessLabel.CONFIGURATION_REQUIRED),
-        note = "On-device models are listed under Local AI. Nothing is downloaded in this build. A cloud model is not used.",
+        note = "LiteRT-LM 0.20.0 is packaged for CPU. Model weights are not installed until a confirmed download finishes. A cloud model is not used.",
     )
 
     private fun apiOnly(id: ProviderId, note: String) = ProviderAccessProfile(

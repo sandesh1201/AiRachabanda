@@ -96,8 +96,8 @@ object ProviderSetupCatalog {
             methods = listOf(SetupMethod.LOCAL_INFERENCE),
             fields = emptyList(),
             links = emptyList(),
-            requirements = "LiteRT-LM is prepared for Gemma 3 1B and Qwen 2.5 1.5B. No runtime or model file is installed. This build does not download one.",
-            automatedBlocker = "Local inference is not installed.",
+            requirements = "LiteRT-LM 0.20.0 is packaged for CPU. No model file is installed. Qwen can be downloaded inside the app after confirmation when storage is sufficient. Gemma stays blocked until a trusted SHA-256 is pinned.",
+            automatedBlocker = "Local inference stays off until a verified model file is enabled.",
         ),
     ).associateBy { it.id }
 

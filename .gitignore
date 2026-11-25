@@ -9,6 +9,7 @@ local.properties
 .externalNativeBuild/
 .cxx/
 *.apk
+!/APK/AI-Rachabanda-Latest.apk
 *.aab
 *.jks
 *.keystore
