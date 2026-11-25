@@ -34,8 +34,10 @@ class PolicyTest {
     @Test
     fun verifiedFreeCanBeEligibleExceptMandatoryAssistedProviders() {
         assertTrue(ZeroCostPolicy.automatedInferenceAllowed(ProviderId.GROQ, BillingEligibility.VERIFIED_FREE))
-        assertFalse(ZeroCostPolicy.automatedInferenceAllowed(ProviderId.CHATGPT, BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED))
+        assertTrue(ZeroCostPolicy.automatedInferenceAllowed(ProviderId.CHATGPT, BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED))
+        assertFalse(ZeroCostPolicy.automatedInferenceAllowed(ProviderId.CHATGPT, BillingEligibility.VERIFIED_FREE))
         assertFalse(ZeroCostPolicy.automatedInferenceAllowed(ProviderId.CLAUDE, BillingEligibility.VERIFIED_FREE))
+        assertFalse(ZeroCostPolicy.automatedInferenceAllowed(ProviderId.LOCAL, BillingEligibility.VERIFIED_FREE))
         assertTrue(ZeroCostPolicy.MANDATORY)
     }
 
@@ -56,7 +58,7 @@ class PolicyTest {
     }
 
     @Test
-    fun chatGptAuthorizationIsPreparedAndLiveExchangeIsDisabled() {
+    fun chatGptAuthorizationIsPreparedForLoopbackPkce() {
         val request = ChatGptPlanUsage.prepareAuthorization(loopbackPort = 1455, hostId = "urn:uuid:11111111-1111-4111-8111-111111111111")
         assertTrue(request.authorizationUrl.startsWith("https://auth.openai.com/api/accounts/authorize?"))
         assertTrue(request.authorizationUrl.contains("client_id=dynamic_agent_client"))
@@ -76,7 +78,8 @@ class PolicyTest {
     fun assistedImportRejectsBlankTextAndUnsupportedProviders() {
         assertFalse(ImportRules.check(ProviderId.CLAUDE, "  ", 1).accepted)
         assertFalse(ImportRules.check(ProviderId.GROQ, "A response", 1).accepted)
-        assertTrue(ImportRules.check(ProviderId.CHATGPT, "A response", 1).accepted)
+        assertFalse(ImportRules.check(ProviderId.CHATGPT, "A response", 1).accepted)
+        assertTrue(ImportRules.check(ProviderId.GEMINI, "A response", 1).accepted)
     }
 
     @Test

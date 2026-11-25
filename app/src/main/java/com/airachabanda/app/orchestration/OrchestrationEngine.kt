@@ -55,14 +55,12 @@ fun interface ParticipantSource {
 
 class DatabaseParticipantSource(
     private val dao: CouncilDao,
-    private val installedLocalModels: () -> List<String> = { emptyList() },
 ) : ParticipantSource {
     override suspend fun load(): List<EligibleParticipant> {
         val rows = dao.providerConfigs()
-        val remote = ProviderRegistry.all.mapNotNull { definition ->
+        return ProviderRegistry.all.mapNotNull { definition ->
+            if (definition.id == ProviderId.LOCAL) return@mapNotNull null
             val row = rows.firstOrNull { it.providerId == definition.id.name }
-            val participation = row?.participationMode?.let(ParticipationMode::valueOf)
-                ?: definition.defaultParticipation
             val billing = row?.billingEligibility?.let(BillingEligibility::valueOf)
                 ?: definition.defaultBilling
             val verifiedAutomation = row?.automatedInferenceEnabled == true &&
@@ -72,10 +70,10 @@ class DatabaseParticipantSource(
                     providerId = definition.id,
                     assisted = false,
                     billing = billing,
-                    verifiedModelId = if (definition.id == ProviderId.GEMINI) {
-                        com.airachabanda.app.provider.gemini.GeminiFreeCatalog.PREFERRED
-                    } else {
-                        com.airachabanda.app.core.model.ModelIdentity.UNKNOWN
+                    verifiedModelId = when (definition.id) {
+                        ProviderId.GEMINI -> com.airachabanda.app.provider.gemini.GeminiFreeCatalog.PREFERRED
+                        ProviderId.CHATGPT -> com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.DEFAULT_MODEL
+                        else -> com.airachabanda.app.core.model.ModelIdentity.UNKNOWN
                     },
                 )
             } else when (ProviderAccess.active(definition.id)) {
@@ -84,7 +82,6 @@ class DatabaseParticipantSource(
                 ParticipationMode.UNAVAILABLE -> null
             }
         }
-        return remote + com.airachabanda.app.provider.local.ondevice.OnDeviceParticipation.seats(installedLocalModels())
     }
 }
 
@@ -125,7 +122,6 @@ class OrchestrationEngine(
     private val nameResolver: (String) -> List<java.net.InetAddress> = { host -> java.net.InetAddress.getAllByName(host).toList() },
     private val attachmentContext: suspend (conversationId: String, sessionId: String) -> String = { _, _ -> "" },
     private val onDiscussionStopped: suspend (conversationId: String) -> Unit = {},
-    private val localModelId: () -> String? = { null },
     private val providerSecret: suspend (ProviderId) -> String? = { null },
 ) {
     private val mutex = Mutex()
@@ -1426,18 +1422,16 @@ class OrchestrationEngine(
         val session = fresh(participant.sessionId)
         val provider = ProviderId.valueOf(participant.providerId)
         val automated = participant.participationMode == ParticipationMode.AUTOMATED.name &&
-            (provider == ProviderId.LOCAL ||
-                ZeroCostPolicy.automatedInferenceAllowed(
-                    provider,
-                    BillingEligibility.valueOf(participant.billingEligibility),
-                ))
+            provider != ProviderId.LOCAL &&
+            ZeroCostPolicy.automatedInferenceAllowed(
+                provider,
+                BillingEligibility.valueOf(participant.billingEligibility),
+            )
         var state = if (automated) AssistedTaskState.READY else AssistedTaskState.AWAITING_USER_RESPONSE
         if (queued) state = AssistedTaskState.QUEUED
         var markAutomated = false
         if (!queued && participant.participationMode == ParticipationMode.AUTOMATED.name) {
-            val ceiling = if (provider == ProviderId.LOCAL) {
-                session.requestBudget
-            } else if (kind == KIND_RESEARCH || kind == KIND_FOLLOW_UP) {
+            val ceiling = if (kind == KIND_RESEARCH || kind == KIND_FOLLOW_UP) {
                 (session.requestBudget - reservedReviewSlots(session.id)).coerceAtLeast(0)
             } else {
                 session.requestBudget
@@ -1675,53 +1669,23 @@ class OrchestrationEngine(
         )
     }
 
-    suspend fun runInstalledModel(sessionId: String): SessionSnapshot {
-        val modelId = localModelId() ?: return snapshot(sessionId)
-        val ready = council.tasksForSession(sessionId).filter {
-            it.providerId == ProviderId.LOCAL.name &&
-                it.automated &&
-                it.state == AssistedTaskState.READY.name
-        }
-        if (ready.isEmpty()) return snapshot(sessionId)
-        ready.forEach { task ->
-            val outcome = dispatchPrepared(
-                sessionId,
-                task.id,
-                PreparedCall(
-                    providerId = ProviderId.LOCAL,
-                    modelId = modelId,
-                    secret = "",
-                    alreadyReserved = true,
-                ),
-            )
-            council.updateTaskState(
-                task.id,
-                if (outcome.completed) AssistedTaskState.COMPLETED.name else AssistedTaskState.FAILED.name,
-                clock(),
-            )
-            if (!outcome.completed) note(sessionId, outcome.reason)
-        }
-        return advance(sessionId)
-    }
-
     suspend fun runReadyAutomated(sessionId: String): SessionSnapshot {
         val ready = council.tasksForSession(sessionId).filter {
-            it.providerId == ProviderId.GEMINI.name &&
-                it.automated &&
-                it.state == AssistedTaskState.READY.name
+            it.automated &&
+                it.state == AssistedTaskState.READY.name &&
+                (it.providerId == ProviderId.GEMINI.name || it.providerId == ProviderId.CHATGPT.name)
         }
         if (ready.isEmpty()) return snapshot(sessionId)
         ready.forEach { task ->
-            val secret = providerSecret(ProviderId.GEMINI).orEmpty()
+            val provider = ProviderId.valueOf(task.providerId)
+            val secret = providerSecret(provider).orEmpty()
             if (secret.isBlank()) {
                 council.updateTaskState(task.id, AssistedTaskState.FAILED.name, clock())
-                note(sessionId, "Gemini is not ready. No request was sent.")
+                note(sessionId, "${provider.name} is not ready. No request was sent.")
                 return@forEach
             }
-            val outcome = dispatchPrepared(
-                sessionId,
-                task.id,
-                PreparedCall(
+            val call = when (provider) {
+                ProviderId.GEMINI -> PreparedCall(
                     providerId = ProviderId.GEMINI,
                     modelId = com.airachabanda.app.provider.gemini.GeminiFreeCatalog.PREFERRED,
                     secret = secret,
@@ -1729,8 +1693,20 @@ class OrchestrationEngine(
                     freeTierKnown = true,
                     credentialBoundToProject = true,
                     alreadyReserved = true,
-                ),
-            )
+                )
+                ProviderId.CHATGPT -> PreparedCall(
+                    providerId = ProviderId.CHATGPT,
+                    modelId = com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.DEFAULT_MODEL,
+                    secret = secret,
+                    alreadyReserved = true,
+                )
+                else -> {
+                    council.updateTaskState(task.id, AssistedTaskState.FAILED.name, clock())
+                    note(sessionId, "No online dispatcher for ${provider.name}.")
+                    return@forEach
+                }
+            }
+            val outcome = dispatchPrepared(sessionId, task.id, call)
             council.updateTaskState(
                 task.id,
                 if (outcome.completed) AssistedTaskState.COMPLETED.name else AssistedTaskState.FAILED.name,
@@ -1743,9 +1719,9 @@ class OrchestrationEngine(
 
     private fun select(raw: List<EligibleParticipant>): List<EligibleParticipant> =
         raw.mapNotNull { candidate ->
+            if (candidate.providerId == ProviderId.LOCAL) return@mapNotNull null
             val automated = !candidate.assisted &&
-                (candidate.providerId == ProviderId.LOCAL ||
-                    ZeroCostPolicy.automatedInferenceAllowed(candidate.providerId, candidate.billing))
+                ZeroCostPolicy.automatedInferenceAllowed(candidate.providerId, candidate.billing)
             when {
                 candidate.assisted -> candidate
                 automated -> candidate

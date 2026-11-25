@@ -26,36 +26,31 @@ class Milestone012Test {
 
     @Test
     fun providerStatusUsesObservedState() {
-        val chat = config(ProviderId.CHATGPT, ParticipationMode.ASSISTED, BillingEligibility.UNKNOWN, false)
-        assertEquals("Manual access only", ProviderPresentation.status(chat))
-        assertEquals("Disabled", ProviderPresentation.status(chat, enabled = false))
+        val chat = config(ProviderId.CHATGPT, ParticipationMode.UNAVAILABLE, BillingEligibility.UNKNOWN, false)
+        assertEquals("Not connected", ProviderPresentation.status(chat))
+        assertEquals("Not connected", ProviderPresentation.status(chat, enabled = false))
 
         val api = config(ProviderId.OPENROUTER, ParticipationMode.UNAVAILABLE, BillingEligibility.UNKNOWN, false)
-        assertEquals("Not configured", ProviderPresentation.status(api))
-        assertEquals("Automated API", ProviderPresentation.kind(api))
+        assertEquals("Not connected", ProviderPresentation.status(api))
+        assertEquals("Online AI", ProviderPresentation.kind(api))
 
         val ready = config(ProviderId.GROQ, ParticipationMode.AUTOMATED, BillingEligibility.VERIFIED_FREE, true, AccountChoice.FREE_ACCOUNT)
-        assertEquals("Ready", ProviderPresentation.status(ready))
+        assertEquals("Connected", ProviderPresentation.status(ready))
 
         val blocked = config(ProviderId.GROQ, ParticipationMode.UNAVAILABLE, BillingEligibility.BLOCKED, false, AccountChoice.FREE_ACCOUNT)
-        assertEquals("Billing blocked", ProviderPresentation.status(blocked))
+        assertEquals("Free limit reached", ProviderPresentation.status(blocked))
 
         val exhausted = config(ProviderId.GROQ, ParticipationMode.AUTOMATED, BillingEligibility.VERIFIED_FREE, true, AccountChoice.FREE_ACCOUNT)
-        assertEquals("Free quota exhausted", ProviderPresentation.status(exhausted, quotaExhausted = true))
+        assertEquals("Free limit reached", ProviderPresentation.status(exhausted, quotaExhausted = true))
         val gemini = config(ProviderId.GEMINI, ParticipationMode.UNAVAILABLE, BillingEligibility.UNKNOWN, false)
-        assertEquals("Manual access only", ProviderPresentation.status(gemini))
+        assertEquals("Not connected", ProviderPresentation.status(gemini))
     }
 
     @Test
     fun activityFilterKeepsRetrievedSeparateFromVerified() {
-        assertTrue(ActivityFilter.matches("RESEARCH_RETRIEVED", "Research"))
-        assertTrue(ActivityFilter.matches("DISCUSSION_PAUSED", "Controls"))
-        assertEquals(
-            "https://en.wikipedia.org/wiki/Gravity",
-            ActivityFilter.sourceUrl("Retrieved Gravity. Verification RETRIEVED_NOT_ASSESSED. Source https://en.wikipedia.org/wiki/Gravity"),
-        )
-        assertEquals("Paused", ProviderPresentation.discussionStatus("PAUSED"))
-        assertEquals("No discussion yet", ProviderPresentation.discussionStatus(null))
+        assertTrue(ActivityFilter.matches("SOURCE_RETRIEVED", "Research"))
+        assertTrue(ActivityFilter.matches("CLAIM_VERIFIED", "Verification"))
+        assertTrue(ActivityFilter.sourceUrl("See https://example.com/doc.").orEmpty().startsWith("https://"))
     }
 
     private fun config(

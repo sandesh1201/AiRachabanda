@@ -16,13 +16,14 @@ import org.junit.Test
 
 class Milestone016BTest {
     @Test
-    fun anInstalledLocalModelIsEnoughToAnswerAutomatically() {
+    fun offlineModelsDoNotEnableAutomaticAnswers() {
+        assertFalse(ChatReadiness.automatic(localInstalled = true, providers = emptyList()))
         assertFalse(ChatReadiness.automatic(localInstalled = false, providers = emptyList()))
-        assertTrue(ChatReadiness.automatic(localInstalled = true, providers = emptyList()))
     }
 
     @Test
-    fun chatgptPlanUsageStaysOffAndWaitingNamesTheRequiredAction() {
+    fun chatgptPlanUsageStaysOffUntilLiveConnectAndWaitingNamesTheRequiredAction() {
+        ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED = false
         assertFalse(ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED)
         assertEquals(
             "Bring the assistant's reply back",
@@ -31,11 +32,11 @@ class Milestone016BTest {
     }
 
     @Test
-    fun aVerifiedFreeCloudProviderCanBeAutomaticWithoutChatGpt() {
+    fun verifiedOnlineProvidersCanBeAutomaticIncludingChatGptPlanUsage() {
         val gemini = config(ProviderId.GEMINI, BillingEligibility.VERIFIED_FREE, automated = true)
         val chatgpt = config(ProviderId.CHATGPT, BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED, automated = true)
-        assertTrue(ChatReadiness.automatic(false, listOf(gemini)))
-        assertFalse(ChatReadiness.automatic(false, listOf(chatgpt)))
+        assertTrue(ChatReadiness.automatic(listOf(gemini)))
+        assertTrue(ChatReadiness.automatic(listOf(chatgpt)))
     }
 
     private fun config(id: ProviderId, billing: BillingEligibility, automated: Boolean) = ProviderConfig(

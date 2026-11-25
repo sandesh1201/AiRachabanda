@@ -4,28 +4,25 @@ import com.airachabanda.app.core.model.AccountChoice
 import com.airachabanda.app.core.model.BillingEligibility
 import com.airachabanda.app.core.model.ParticipationMode
 import com.airachabanda.app.core.model.ProviderConfig
-import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.provider.AccessLabel
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderAccessMode
 
 object ChatReadiness {
-    fun automatic(localInstalled: Boolean, providers: List<ProviderConfig>): Boolean {
-        if (localInstalled) return true
-        return providers.any { config ->
-            val modes = ProviderAccess.profile(config.providerId).modes
-            val verified = config.billingEligibility == BillingEligibility.VERIFIED_FREE ||
-                config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
-            verified &&
+    fun automatic(providers: List<ProviderConfig>): Boolean =
+        providers.any { config ->
+            config.providerId != ProviderId.LOCAL &&
                 config.automatedInferenceEnabled &&
-                ProviderAccessMode.FREE_AUTOMATED_API in modes &&
                 com.airachabanda.app.orchestration.ZeroCostPolicy.automatedInferenceAllowed(
                     config.providerId,
                     config.billingEligibility,
                 )
         }
-    }
+
+    @Deprecated("Offline AI was removed")
+    fun automatic(localInstalled: Boolean, providers: List<ProviderConfig>): Boolean = automatic(providers)
 }
 
 object DiscussionPresence {
@@ -80,63 +77,58 @@ object ProviderPresentation {
         authenticationRequired: Boolean = false,
     ): String {
         if (!enabled && config.participationMode == ParticipationMode.ASSISTED) return "Disabled"
-        if (quotaExhausted) return "Free quota exhausted"
+        if (quotaExhausted) return "Free limit reached"
         val labels = ProviderAccess.profile(config.providerId).labels
+        val modes = ProviderAccess.profile(config.providerId).modes
+        if (AccessLabel.UNAVAILABLE in labels || ProviderAccessMode.UNAVAILABLE in modes) {
+            return "Unavailable"
+        }
         val verified = config.billingEligibility == BillingEligibility.VERIFIED_FREE ||
             config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
         if (config.billingEligibility == BillingEligibility.PAID || config.billingEligibility == BillingEligibility.BLOCKED) {
-            return "Billing blocked"
+            return "Free limit reached"
         }
-        val modes = ProviderAccess.profile(config.providerId).modes
         if (verified && config.automatedInferenceEnabled && ProviderAccessMode.FREE_AUTOMATED_API in modes) {
-            return "Ready"
+            return "Connected"
         }
         if (verified) return "Free eligibility verified"
         val configured = credentialStored || config.accountChoice != AccountChoice.NOT_CONFIGURED
         if (!configured) {
-            if (AccessLabel.FREE_CHAT in labels) return "Manual access only"
             if (AccessLabel.CONFIGURATION_REQUIRED in labels || AccessLabel.BILLING_VERIFICATION_REQUIRED in labels) {
-                return "Not configured"
+                return "Not connected"
             }
         } else {
-            if (authenticationRequired) return "Authentication required"
+            if (authenticationRequired) return "Reconnect required"
             if (AccessLabel.BILLING_VERIFICATION_REQUIRED in labels && AccessLabel.FREE_CHAT !in labels) {
-                return "Verification required"
+                return "Reconnect required"
             }
             if (credentialStored) return "Credential stored"
-            if (AccessLabel.FREE_CHAT in labels) return "Manual access only"
-            return "Not configured"
+            return "Not connected"
         }
-        if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
-        if (config.participationMode == ParticipationMode.UNAVAILABLE || AccessLabel.UNAVAILABLE in labels) {
-            return "Temporarily unavailable"
+        if (config.participationMode == ParticipationMode.UNAVAILABLE) {
+            return "Unavailable"
         }
-        if (AccessLabel.LOCAL_INFERENCE in labels) return "Not configured"
-        if (config.accountChoice == AccountChoice.NOT_CONFIGURED) return "Not configured"
-        return "Assisted chat available"
+        if (config.accountChoice == AccountChoice.NOT_CONFIGURED) return "Not connected"
+        return "Unavailable"
     }
 
     fun blocker(status: String): String = when (status) {
         "Disabled" -> "This participant is turned off for new discussions."
-        "Free quota exhausted" -> "The free allowance is used up. This app does not buy more and does not switch to a paid request."
-        "Billing blocked" -> "A charge remains possible, so automated access stays off."
-        "Authentication required" -> "Official authorization is not complete. No metadata or inference request was sent."
-        "Ready for automated participation" -> "Free eligibility is verified and automated participation is enabled. Paid fallback stays off."
+        "Free limit reached" -> "The free allowance is used up. This app does not buy more and does not switch to a paid request."
+        "Connected" -> "Authorization and a live inference test succeeded."
         "Free eligibility verified" -> "Free eligibility is recorded. Automated participation stays off until it is enabled for this provider."
         "Credential stored" -> "A credential is stored in Android Keystore and is not shown. Billing eligibility is not verified, so inference stays off."
-        "Verification required" -> "The account plan or project billing has not been shown to be free."
-        "Not configured" -> "No credential is stored. Enter it in this app. Do not paste it into a chat."
-        "Assisted chat available" -> "Official free chat is assisted. An imported response is user-supplied and is not an authenticated provider result."
-        "Temporarily unavailable" -> "No verified zero-cost automated path is available."
+        "Reconnect required" -> "Official authorization is incomplete or expired."
+        "Not connected" -> "No credential is stored. Sign in or enter an API key in this app."
+        "Unavailable" -> "No verified zero-cost automated path is available."
         else -> "Automated inference stays off until eligibility is verified."
     }
 
     fun kind(config: ProviderConfig): String {
         val modes = ProviderAccess.profile(config.providerId).modes
         return when {
-            ProviderAccessMode.LOCAL_INFERENCE in modes -> "Local inference"
-            ProviderAccessMode.FREE_AUTOMATED_API in modes && ProviderAccessMode.FREE_ASSISTED_CHAT !in modes -> "Automated API"
-            else -> "Assisted chat"
+            ProviderAccessMode.FREE_AUTOMATED_API in modes -> "Online AI"
+            else -> "Unavailable"
         }
     }
 
@@ -156,11 +148,21 @@ object ProviderPresentation {
 object ConnectionPresentation {
     const val NOT_CONNECTED = "Not connected"
     const val CONNECTING = "Connecting"
-    const val READY = "Ready"
-    const val ASSISTED_CHAT = "Manual access only"
-    const val FREE_ACCESS_UNAVAILABLE = "Free access unavailable"
-    const val TEMPORARILY_UNAVAILABLE = "Temporarily unavailable"
-    const val SETUP_REQUIRED = "Setup required"
+    const val CONNECTED = "Connected"
+    const val RECONNECT_REQUIRED = "Reconnect required"
+    const val FREE_LIMIT_REACHED = "Free limit reached"
+    const val UNAVAILABLE = "Unavailable"
+
+    @Deprecated("Use CONNECTED")
+    const val READY = CONNECTED
+    @Deprecated("Use UNAVAILABLE")
+    const val ASSISTED_CHAT = UNAVAILABLE
+    @Deprecated("Use FREE_LIMIT_REACHED")
+    const val FREE_ACCESS_UNAVAILABLE = FREE_LIMIT_REACHED
+    @Deprecated("Use UNAVAILABLE")
+    const val TEMPORARILY_UNAVAILABLE = UNAVAILABLE
+    @Deprecated("Use RECONNECT_REQUIRED")
+    const val SETUP_REQUIRED = RECONNECT_REQUIRED
 
     fun state(
         config: ProviderConfig,
@@ -172,50 +174,53 @@ object ConnectionPresentation {
         connectionTested: Boolean = false,
     ): String {
         if (connecting) return CONNECTING
-        if (quotaExhausted) return TEMPORARILY_UNAVAILABLE
+        if (quotaExhausted) return FREE_LIMIT_REACHED
         if (config.billingEligibility == BillingEligibility.PAID || config.billingEligibility == BillingEligibility.BLOCKED) {
-            return FREE_ACCESS_UNAVAILABLE
+            return FREE_LIMIT_REACHED
         }
         val modes = ProviderAccess.profile(config.providerId).modes
         val verified = config.billingEligibility == BillingEligibility.VERIFIED_FREE ||
             config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
-        val assisted = ProviderAccessMode.FREE_ASSISTED_CHAT in modes
         val automated = ProviderAccessMode.FREE_AUTOMATED_API in modes
-        if (verified && config.automatedInferenceEnabled && enabled && automated && connectionTested) return READY
-        if (verified && config.automatedInferenceEnabled && enabled && automated) return SETUP_REQUIRED
-        if (ProviderAccessMode.LOCAL_INFERENCE in modes) return TEMPORARILY_UNAVAILABLE
-        if (authenticationRequired) return SETUP_REQUIRED
-        if (automated && credentialStored && !verified) return SETUP_REQUIRED
-        if (verified && automated && !config.automatedInferenceEnabled) {
-            if (assisted && enabled) return ASSISTED_CHAT
-            return SETUP_REQUIRED
+        if (verified && config.automatedInferenceEnabled && enabled && automated && connectionTested) {
+            return CONNECTED
         }
-        if (automated && !assisted && !credentialStored) return NOT_CONNECTED
-        if (assisted && !enabled) return NOT_CONNECTED
-        if (assisted) return ASSISTED_CHAT
-        if (config.participationMode == ParticipationMode.UNAVAILABLE || AccessLabel.UNAVAILABLE in ProviderAccess.profile(config.providerId).labels) {
-            return TEMPORARILY_UNAVAILABLE
+        if (verified && config.automatedInferenceEnabled && enabled && automated) {
+            return RECONNECT_REQUIRED
         }
+        if (ProviderAccessMode.UNAVAILABLE in modes || AccessLabel.UNAVAILABLE in ProviderAccess.profile(config.providerId).labels) {
+            return UNAVAILABLE
+        }
+        if (authenticationRequired) return RECONNECT_REQUIRED
+        if (automated && credentialStored && !verified) return RECONNECT_REQUIRED
+        if (verified && automated && !config.automatedInferenceEnabled) return RECONNECT_REQUIRED
+        if (automated && !credentialStored) return NOT_CONNECTED
+        if (config.participationMode == ParticipationMode.UNAVAILABLE) return UNAVAILABLE
         return NOT_CONNECTED
     }
 
     fun explanation(state: String, providerId: ProviderId): String = when (state) {
         CONNECTING -> "Checking this provider. No paid request is sent."
-        READY -> "Free access is verified. This provider can join the Council."
-        ASSISTED_CHAT -> "Open website shows the provider's own chat. Signing in there does not connect this app."
-        FREE_ACCESS_UNAVAILABLE -> "This account can be charged, so automated use stays off. Other AIs can continue."
-        TEMPORARILY_UNAVAILABLE -> when (providerId) {
-            ProviderId.LOCAL -> "No local model is installed. Other AIs can continue."
+        CONNECTED, READY -> "Authorization and a live inference test succeeded. This provider can join the Council."
+        FREE_LIMIT_REACHED, FREE_ACCESS_UNAVAILABLE ->
+            "Free usage is exhausted or billing would apply. Automated use stays off."
+        UNAVAILABLE, ASSISTED_CHAT, TEMPORARILY_UNAVAILABLE -> when (providerId) {
+            ProviderId.LOCAL -> "Offline AI was removed. Connect an online AI account instead."
+            ProviderId.CLAUDE -> "Claude has no verified zero-additional-cost automated route for this app."
             else -> "This provider cannot take part right now. Other AIs can continue."
         }
-        SETUP_REQUIRED -> when (providerId) {
-            ProviderId.GROQ -> "The key is saved. Groq does not show whether the Free plan applies, so automated use stays off."
-            ProviderId.CLOUDFLARE -> "The token is saved. Workers Free is not verified, so automated use stays off."
-            ProviderId.OPENROUTER -> "The key is saved. Spending limits are not verified, so automated use stays off."
-            ProviderId.GEMINI -> "The key is saved. Project billing is not verified, so automated use stays off."
-            else -> "The key is saved. Free access is not verified, so automated use stays off."
+        RECONNECT_REQUIRED, SETUP_REQUIRED -> when (providerId) {
+            ProviderId.CHATGPT -> "Sign in with ChatGPT again, grant plan usage, and complete the return to this app."
+            ProviderId.GROQ -> "The key is saved. Groq Free plan proof is incomplete."
+            ProviderId.CLOUDFLARE -> "The token is saved. Workers Free is not verified."
+            ProviderId.OPENROUTER -> "The key is saved. Spending limits are not verified."
+            ProviderId.GEMINI -> "The key is saved. Project billing is not verified."
+            else -> "Authorization is incomplete. Automated use stays off."
         }
-        else -> "Paste an API key and tap Connect. Opening a website does not connect this app."
+        else -> when (providerId) {
+            ProviderId.CHATGPT -> "Tap Connect, sign in on OpenAI's page, grant plan usage, and return automatically to this app."
+            else -> "Paste an API key and tap Connect. Opening a website alone does not connect this app."
+        }
     }
 }
 

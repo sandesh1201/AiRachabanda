@@ -17,25 +17,29 @@ import org.junit.Test
 
 class Milestone016CTest {
     @Test
-    fun websiteLoginIsNotReadyAndAssistedIsOffByDefault() {
+    fun websiteLoginIsNotConnectedAndAssistedIsOffByDefault() {
         assertTrue(ProviderAccess.defaultEnabled.isEmpty())
+        ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED = false
         assertFalse(ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED)
-        assertTrue(ChatGptPlanUsage.disabledReason().contains("chatgpt.com") || ChatGptPlanUsage.disabledReason().contains("loopback"))
+        assertTrue(
+            ChatGptPlanUsage.disabledReason().contains("chatgpt.com") ||
+                ChatGptPlanUsage.disabledReason().contains("127.0.0.1"),
+        )
         val claude = ProviderConfig(
             providerId = ProviderId.CLAUDE,
             accountChoice = AccountChoice.FREE_ACCOUNT,
             declaredPlanId = null,
             billingEligibility = BillingEligibility.UNKNOWN,
-            participationMode = ParticipationMode.ASSISTED,
+            participationMode = ParticipationMode.UNAVAILABLE,
             integrationMethod = IntegrationMethod.ASSISTED_OFFICIAL_INTERFACE,
             automatedInferenceEnabled = false,
             updatedAtEpochMs = 0,
         )
-        assertEquals(ConnectionPresentation.ASSISTED_CHAT, ConnectionPresentation.state(claude, enabled = true))
-        assertEquals(
-            "Open website shows the provider's own chat. Signing in there does not connect this app.",
-            ConnectionPresentation.explanation(ConnectionPresentation.ASSISTED_CHAT, ProviderId.CLAUDE),
+        assertEquals(ConnectionPresentation.UNAVAILABLE, ConnectionPresentation.state(claude, enabled = true))
+        assertTrue(
+            ConnectionPresentation.explanation(ConnectionPresentation.UNAVAILABLE, ProviderId.CLAUDE)
+                .contains("zero-additional-cost"),
         )
-        assertFalse(ChatReadiness.automatic(localInstalled = false, providers = listOf(claude)))
+        assertFalse(ChatReadiness.automatic(providers = listOf(claude)))
     }
 }

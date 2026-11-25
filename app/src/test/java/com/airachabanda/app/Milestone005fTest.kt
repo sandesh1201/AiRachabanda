@@ -3,8 +3,9 @@ package com.airachabanda.app
 import com.airachabanda.app.provider.gemini.GeminiAdapter
 import com.airachabanda.app.provider.gemini.GeminiLiveGate
 import com.airachabanda.app.provider.gemini.GeminiProjectBinding
-import com.airachabanda.app.provider.local.LocalInferencePolicy
-import com.airachabanda.app.provider.local.LocalTransportPolicy
+import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.provider.ProviderAccess
+import com.airachabanda.app.provider.ProviderAccessMode
 import com.airachabanda.app.provider.openrouter.HttpExchange
 import com.airachabanda.app.provider.openrouter.HttpResult
 import com.airachabanda.app.provider.openrouter.HttpTransport
@@ -108,21 +109,7 @@ class Milestone005fTest {
     }
 
     @Test
-    fun emulatorAliasIsNotTheWindowsLoopbackRoute() {
-        assertEquals(LocalTransportPolicy.Route.ADB_REVERSE_LOOPBACK, LocalTransportPolicy.classify("127.0.0.1"))
-        assertEquals(LocalTransportPolicy.Route.EMULATOR_ALIAS, LocalTransportPolicy.classify("10.0.2.2"))
-        val alias = LocalInferencePolicy.prepare(
-            LocalInferencePolicy.Selection(
-                modelId = LocalInferencePolicy.FIRST_MODEL,
-                endpointHost = "10.0.2.2",
-                cloudDisabled = true,
-                contextTokens = 1024,
-                timeoutMs = 30_000,
-                budgetRemaining = 1,
-                runtimeInstalled = true,
-            ),
-        )
-        assertFalse(alias.accepted)
-        assertTrue(alias.reason.contains("adb reverse"))
+    fun offlineLocalInferenceIsUnavailable() {
+        assertTrue(ProviderAccess.profile(ProviderId.LOCAL).modes.contains(ProviderAccessMode.UNAVAILABLE))
     }
 }

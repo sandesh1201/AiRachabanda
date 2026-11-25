@@ -60,7 +60,6 @@ fun SettingsRoot(
     val entries = listOf(
         "AI Providers" to listOf(
             "providers" to "AI providers",
-            "setup/LOCAL" to "Local AI",
         ),
         "Appearance" to listOf("appearance" to "Light, dark, and system"),
         "Preferences" to listOf("research" to "Discussion preferences"),
@@ -208,7 +207,7 @@ fun SettingsDetail(
                 Text("About", style = MaterialTheme.typography.headlineSmall)
                 Text("AI Rachabanda")
                 Text("Multiple Perspectives. Collective Intelligence.")
-                Text("Version 0.16.2. Opening a provider website does not connect this app. Gemini can answer after a free-project test. Other website chats stay manual. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. Gemini stays behind in-app confirmation. On-device LiteRT-LM 0.20.0 is packaged for CPU and no model file is installed. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
+                Text("Version 0.17.0. Offline AI was removed. Opening a provider website does not connect this app. ChatGPT can connect through official Sign in with ChatGPT and a live Responses test. Gemini can answer after a free-project test. Claude automatic access stays unavailable. Window width uses compact, medium, and expanded classes. A reported fold keeps controls off a separating hinge. This build was not tested on a physical Galaxy Z Fold 6. Quick mode uses one AI request and is not an independent multi-model review. A missing provider does not stop the other participants. Pause, resume, stop, and finish stay on the discussion. Attachments and generated documents stay on this device. Conversation text is not encrypted. Credential files use the Android Keystore. Public research sends only a query you approve. OCR is not installed: adding it needs a separately approved on-device library and its language models. Microsoft Office visual compatibility has not been tested. Physical foldable hardware has not been tested. Passing tests does not mean the application is completely secure.")
             }
         }
     }
@@ -707,12 +706,11 @@ private fun ProviderAccessSettings(
                 Text(ProviderRegistry.definition(id).displayName, style = MaterialTheme.typography.titleSmall)
                 Text(status, style = MaterialTheme.typography.labelLarge)
                 Text(ConnectionPresentation.explanation(status, id), style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                val websiteOnly = com.airachabanda.app.provider.ProviderAccessMode.FREE_AUTOMATED_API !in profile.modes &&
-                    com.airachabanda.app.provider.ProviderAccessMode.LOCAL_INFERENCE !in profile.modes
+                val onlineApi = com.airachabanda.app.provider.ProviderAccessMode.FREE_AUTOMATED_API in profile.modes
                 TextButton(onClick = { onConfigure(id) }) {
                     Text(when {
-                        status == ConnectionPresentation.READY -> "Manage"
-                        websiteOnly -> "Open website"
+                        status == ConnectionPresentation.CONNECTED || status == ConnectionPresentation.READY -> "Manage"
+                        !onlineApi -> "Unavailable"
                         configured -> "Manage"
                         else -> "Connect"
                     })

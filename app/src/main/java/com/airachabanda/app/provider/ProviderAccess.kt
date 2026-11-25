@@ -29,25 +29,34 @@ data class ProviderAccessProfile(
 
 object ProviderAccess {
     private val profiles: Map<ProviderId, ProviderAccessProfile> = listOf(
-        chat(ProviderId.CHATGPT, "https://chatgpt.com", "Free ChatGPT chat is assisted. The API is not used."),
-        chat(ProviderId.CLAUDE, "https://claude.ai", "Free Claude chat is assisted. Consumer credentials are not collected."),
+        apiOnly(
+            ProviderId.CHATGPT,
+            "Sign in with ChatGPT authorizes AI Rachabanda with the owner's ChatGPT plan. Logging into chatgpt.com in a browser alone does not connect this app.",
+        ),
+        unavailable(
+            ProviderId.CLAUDE,
+            "Claude has no verified zero-additional-cost automated route for this app. Automatic replies stay unavailable.",
+        ),
         both(
             ProviderId.GEMINI,
             "https://gemini.google.com",
-            "Gemini chat is assisted. The Gemini API is separate and stays off until project billing is verified.",
+            "Gemini API keys can connect after free-tier billing checks. Browser login alone does not authorize this app.",
         ),
-        chat(ProviderId.DEEPSEEK, "https://chat.deepseek.com", "DeepSeek chat is assisted. The API is not used."),
-        chat(ProviderId.GROK, "https://grok.com", "Grok chat is assisted. The API is not used."),
-        chat(ProviderId.PERPLEXITY, "https://www.perplexity.ai", "Perplexity chat is assisted. The API is not used."),
-        chat(ProviderId.COPILOT, "https://copilot.microsoft.com", "Microsoft Copilot chat is assisted. The Azure API is not used."),
-        chat(ProviderId.QWEN, "https://chat.qwen.ai", "Qwen chat is assisted. The API is not used."),
-        chat(ProviderId.MISTRAL, "https://chat.mistral.ai", "Le Chat is assisted. The Mistral API requires billing and is not used."),
-        chat(ProviderId.KIMI, "https://www.kimi.com", "Kimi chat is assisted. The API is not used."),
-        chat(ProviderId.META_AI, "https://meta.ai", "Meta AI chat is assisted. No API is used."),
-        apiOnly(ProviderId.GROQ, "Groq has an API console, not a separate free chat. Free and Developer billing cannot be distinguished, so automation is off."),
-        apiOnly(ProviderId.OPENROUTER, "OpenRouter has no free consumer chat. Automation stays off until billing protection is verified."),
-        apiOnly(ProviderId.CLOUDFLARE, "Workers AI has no free consumer chat. A missing paid subscription does not positively establish Workers Free."),
-        local(),
+        unavailable(ProviderId.DEEPSEEK, "DeepSeek has no verified free automated route configured yet."),
+        unavailable(ProviderId.GROK, "Grok has no verified free automated route configured yet."),
+        unavailable(ProviderId.PERPLEXITY, "Perplexity has no verified free automated route configured yet."),
+        unavailable(ProviderId.COPILOT, "Microsoft Copilot has no verified free automated route configured yet."),
+        unavailable(ProviderId.QWEN, "Online Qwen remains a potential provider. Automatic access is not verified yet."),
+        unavailable(ProviderId.MISTRAL, "Mistral API requires billing and is not used."),
+        unavailable(ProviderId.KIMI, "Kimi has no verified free automated route configured yet."),
+        unavailable(ProviderId.META_AI, "Meta AI has no verified free automated route configured yet."),
+        apiOnly(ProviderId.GROQ, "Groq free API keys can connect after a live free-tier check."),
+        apiOnly(ProviderId.OPENROUTER, "OpenRouter stays off until a free route and billing protection are verified."),
+        apiOnly(ProviderId.CLOUDFLARE, "Workers AI connects only after a free Workers plan is verified."),
+        unavailable(
+            ProviderId.LOCAL,
+            "Offline AI was removed. Connect an online AI account instead.",
+        ),
     ).associateBy { it.providerId }
 
     val defaultEnabled: Set<ProviderId> = emptySet()
@@ -89,12 +98,12 @@ object ProviderAccess {
         note = note,
     )
 
-    private fun local() = ProviderAccessProfile(
-        providerId = ProviderId.LOCAL,
-        modes = setOf(ProviderAccessMode.LOCAL_INFERENCE),
+    private fun unavailable(id: ProviderId, note: String) = ProviderAccessProfile(
+        providerId = id,
+        modes = setOf(ProviderAccessMode.UNAVAILABLE),
         chatUrl = null,
-        labels = listOf(AccessLabel.LOCAL_INFERENCE, AccessLabel.CONFIGURATION_REQUIRED),
-        note = "LiteRT-LM 0.20.0 is packaged for CPU. Model weights are not installed until a confirmed download finishes. A cloud model is not used.",
+        labels = listOf(AccessLabel.UNAVAILABLE),
+        note = note,
     )
 
     private fun apiOnly(id: ProviderId, note: String) = ProviderAccessProfile(

@@ -31,8 +31,28 @@ object ProviderSetupCatalog {
             "A client secret is not used. The debug certificate is read from this install and is not a permanent production fingerprint."
 
     private val specs: Map<ProviderId, ProviderSetupSpec> = listOf(
-        assisted(ProviderId.CHATGPT, "https://chatgpt.com", "The ChatGPT API is a separate product. A chat subscription does not authorize it."),
-        assisted(ProviderId.CLAUDE, "https://claude.ai", "Claude chat is assisted. The Claude Platform API is not a zero-charge path."),
+        ProviderSetupSpec(
+            id = ProviderId.CHATGPT,
+            methods = listOf(SetupMethod.FREE_AUTOMATED_API),
+            fields = emptyList(),
+            links = listOf(
+                OfficialLink(
+                    "Sign in with ChatGPT",
+                    "https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites",
+                ),
+                OfficialLink("ChatGPT settings", "https://chatgpt.com"),
+            ),
+            requirements = "Tap Connect to open OpenAI's official authorization page. Grant ChatGPT plan usage, return automatically to this app on 127.0.0.1, then complete a live Responses API test. Logging into chatgpt.com alone does not connect AI Rachabanda. Purchased credits stay unused.",
+            automatedBlocker = "Automated ChatGPT stays off until Sign in with ChatGPT returns a plan-usage token and a live inference test succeeds.",
+        ),
+        ProviderSetupSpec(
+            id = ProviderId.CLAUDE,
+            methods = emptyList(),
+            fields = emptyList(),
+            links = listOf(OfficialLink("Claude", "https://claude.ai")),
+            requirements = "Claude has no verified zero-additional-cost automated route for this app.",
+            automatedBlocker = "Claude automatic access is unavailable.",
+        ),
         ProviderSetupSpec(
             id = ProviderId.GEMINI,
             methods = listOf(SetupMethod.FREE_ASSISTED_CHAT, SetupMethod.FREE_AUTOMATED_API),
@@ -93,11 +113,11 @@ object ProviderSetupCatalog {
         assisted(ProviderId.META_AI, "https://meta.ai", "Meta AI chat is assisted. No API is used."),
         ProviderSetupSpec(
             id = ProviderId.LOCAL,
-            methods = listOf(SetupMethod.LOCAL_INFERENCE),
+            methods = emptyList(),
             fields = emptyList(),
             links = emptyList(),
-            requirements = "LiteRT-LM 0.20.0 is packaged for CPU. No model file is installed. Qwen can be downloaded inside the app after confirmation when storage is sufficient. Gemma stays blocked until a trusted SHA-256 is pinned.",
-            automatedBlocker = "Local inference stays off until a verified model file is enabled.",
+            requirements = "Offline AI was removed. Connect an online AI account instead.",
+            automatedBlocker = "Offline AI is unavailable.",
         ),
     ).associateBy { it.id }
 

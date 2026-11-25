@@ -8,18 +8,11 @@ import com.airachabanda.app.persistence.DiscussionDao
 import com.airachabanda.app.persistence.MessageEntity
 import com.airachabanda.app.persistence.ProviderCompletionEntity
 import com.airachabanda.app.persistence.RequestBudgetEntryEntity
+import com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage
 import com.airachabanda.app.provider.cloudflare.CloudflareAdapter
 import com.airachabanda.app.provider.cloudflare.CloudflareOutcome
 import com.airachabanda.app.provider.gemini.GeminiAdapter
 import com.airachabanda.app.provider.gemini.GeminiOutcome
-import com.airachabanda.app.provider.local.LocalInferencePolicy
-import com.airachabanda.app.provider.local.ondevice.LiteRtLmRuntime
-import com.airachabanda.app.provider.local.ondevice.LocalTask
-import com.airachabanda.app.provider.local.ondevice.OnDeviceDispatch
-import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
-import com.airachabanda.app.provider.local.ondevice.OnDevicePreflight
-import com.airachabanda.app.provider.local.ondevice.ThermalLevel
-import java.io.File
 import com.airachabanda.app.provider.openrouter.DispatchOutcome
 import com.airachabanda.app.provider.openrouter.OpenRouterFailure
 import com.airachabanda.app.provider.openrouter.ResponseDisposition
@@ -48,10 +41,6 @@ class PreparedProviderDispatch(
     private val discussion: DiscussionDao,
     private val clock: () -> Long,
     private val ids: () -> String,
-    private val localModels: File? = null,
-    private val localCache: File? = null,
-    private val localRamBytes: () -> Long = { 0L },
-    private val localThermal: () -> ThermalLevel = { ThermalLevel.NORMAL },
 ) {
     suspend fun dispatch(
         sessionId: String,
@@ -62,6 +51,9 @@ class PreparedProviderDispatch(
         sessionBudgetRemaining: Int,
         call: PreparedCall,
     ): DispatchOutcome {
+        if (sessionBudgetRemaining <= 0) {
+            return DispatchOutcome(OpenRouterFailure.POLICY, "The session request budget is exhausted.", completed = false)
+        }
         val outcome = when (call.providerId) {
             ProviderId.CLOUDFLARE -> cloudflare.complete(
                 accountId = call.accountId,
@@ -75,56 +67,6 @@ class PreparedProviderDispatch(
                 textGeneration = call.textGeneration,
                 positiveFreePlan = call.positiveFreePlan,
             ).toStored()
-            ProviderId.LOCAL -> {
-                val model = OnDeviceModelCatalog.find(call.modelId)
-                if (model == null) {
-                    return DispatchOutcome(
-                        OpenRouterFailure.POLICY,
-                        LocalInferencePolicy.prepare(
-                            LocalInferencePolicy.Selection(
-                                modelId = call.modelId,
-                                endpointHost = "127.0.0.1",
-                                cloudDisabled = true,
-                                contextTokens = LocalInferencePolicy.MAX_CONTEXT_TOKENS,
-                                timeoutMs = 30_000,
-                                budgetRemaining = sessionBudgetRemaining,
-                            ),
-                        ).reason,
-                        completed = false,
-                    )
-                }
-                val directory = localModels
-                val verified = if (directory == null) null else OnDevicePreflight.verifiedFile(directory, model)
-                if (directory == null || verified == null) {
-                    return DispatchOutcome(OpenRouterFailure.POLICY, OnDeviceDispatch.reason(model.id), completed = false)
-                }
-                val result = LiteRtLmRuntime.generate(
-                    directory = directory,
-                    modelId = model.id,
-                    prompt = prompt,
-                    task = LocalTask.COUNCIL,
-                    availableRamBytes = localRamBytes(),
-                    thermal = localThermal(),
-                    cacheDir = localCache ?: directory,
-                    accept = true,
-                )
-                if (result.failure != null || result.cancelled || result.text.isBlank()) {
-                    return DispatchOutcome(
-                        OpenRouterFailure.POLICY,
-                        result.failure ?: "No tokens were generated.",
-                        completed = false,
-                    )
-                }
-                StoredOutcome(
-                    failure = OpenRouterFailure.NONE,
-                    disposition = ResponseDisposition.COMPLETED,
-                    reason = "LiteRT-LM ${com.airachabanda.app.provider.local.ondevice.OnDeviceRuntime.PINNED_VERSION} completed for ${model.id}.",
-                    modelId = model.id,
-                    text = result.text,
-                    generationId = "local:${model.id}:${clock()}",
-                    completed = true,
-                )
-            }
             ProviderId.GEMINI -> gemini.complete(
                 apiKey = call.secret,
                 modelId = call.modelId,
@@ -136,7 +78,53 @@ class PreparedProviderDispatch(
                 quotaExhausted = call.quotaExhausted,
                 credentialBoundToProject = call.credentialBoundToProject,
             ).toStored()
-            else -> return DispatchOutcome(OpenRouterFailure.POLICY, "This dispatcher only accepts Cloudflare and Gemini.", completed = false)
+            ProviderId.CHATGPT -> {
+                if (!ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED) {
+                    return DispatchOutcome(
+                        OpenRouterFailure.POLICY,
+                        ChatGptPlanUsage.disabledReason(),
+                        completed = false,
+                    )
+                }
+                if (call.quotaExhausted) {
+                    return DispatchOutcome(
+                        OpenRouterFailure.POLICY,
+                        "ChatGPT plan usage is limited. No further request was sent.",
+                        completed = false,
+                    )
+                }
+                val completion = ChatGptPlanUsage.complete(
+                    accessToken = call.secret,
+                    prompt = prompt,
+                    modelId = call.modelId.ifBlank { ChatGptPlanUsage.DEFAULT_MODEL },
+                )
+                if (!completion.completed) {
+                    return DispatchOutcome(
+                        OpenRouterFailure.POLICY,
+                        completion.failure ?: "ChatGPT did not complete a reply.",
+                        completed = false,
+                    )
+                }
+                StoredOutcome(
+                    failure = OpenRouterFailure.NONE,
+                    disposition = ResponseDisposition.COMPLETED,
+                    reason = "ChatGPT plan usage completed for ${completion.modelId}.",
+                    modelId = completion.modelId,
+                    text = completion.text,
+                    generationId = "chatgpt:${completion.modelId}:${clock()}",
+                    completed = true,
+                )
+            }
+            ProviderId.LOCAL -> return DispatchOutcome(
+                OpenRouterFailure.POLICY,
+                "Offline AI was removed. Connect an online AI account instead.",
+                completed = false,
+            )
+            else -> return DispatchOutcome(
+                OpenRouterFailure.POLICY,
+                "This dispatcher only accepts ChatGPT, Gemini, and Cloudflare.",
+                completed = false,
+            )
         }
         val keep = outcome.disposition == ResponseDisposition.COMPLETED ||
             outcome.disposition == ResponseDisposition.TRUNCATED ||

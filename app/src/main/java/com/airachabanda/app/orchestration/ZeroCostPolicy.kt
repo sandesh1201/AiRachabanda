@@ -11,8 +11,11 @@ object ZeroCostPolicy {
         billing: BillingEligibility,
     ): Boolean {
         if (!MANDATORY) return false
-        if (providerId == ProviderId.CHATGPT || providerId == ProviderId.CLAUDE) {
+        if (providerId == ProviderId.CLAUDE || providerId == ProviderId.LOCAL) {
             return false
+        }
+        if (providerId == ProviderId.CHATGPT) {
+            return billing == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
         }
         return billing == BillingEligibility.VERIFIED_FREE ||
             billing == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED

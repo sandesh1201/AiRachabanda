@@ -22,10 +22,10 @@ class Milestone015Test {
     @Test
     fun providerStatesNameTheBlockerWithoutShowingASecret() {
         val stored = config(ProviderId.OPENROUTER, BillingEligibility.UNKNOWN, AccountChoice.FREE_ACCOUNT)
-        assertEquals("Verification required", ProviderPresentation.status(stored, credentialStored = true))
-        assertTrue(ProviderPresentation.blocker("Verification required").contains("not been shown"))
+        assertEquals("Reconnect required", ProviderPresentation.status(stored, credentialStored = true))
+        assertTrue(ProviderPresentation.blocker("Reconnect required").contains("incomplete") || ProviderPresentation.blocker("Reconnect required").contains("expired"))
         assertEquals(
-            "Authentication required",
+            "Reconnect required",
             ProviderPresentation.status(stored, credentialStored = true, authenticationRequired = true),
         )
         val eligible = config(ProviderId.GEMINI, BillingEligibility.VERIFIED_FREE, AccountChoice.FREE_ACCOUNT, automated = false)

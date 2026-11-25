@@ -314,8 +314,7 @@ class CouncilWorkflow(
                 researchRequests = budgets.researchRequests,
             ),
         )
-        val installed = engine.runInstalledModel(accepted.sessionId)
-        val snapshot = engine.runReadyAutomated(installed.sessionId)
+        val snapshot = engine.runReadyAutomated(accepted.sessionId)
         val assisted = inspect(conversationId).assistedOnly
         val assistance = if (assisted) {
             " Only assisted providers are available. You need to submit each prompt yourself and import the response."
@@ -464,7 +463,6 @@ class CouncilWorkflow(
                 recipientParticipantId = actor,
             ),
         )
-        engine.runInstalledModel(session.id)
         engine.runReadyAutomated(session.id)
         return result.reason
     }

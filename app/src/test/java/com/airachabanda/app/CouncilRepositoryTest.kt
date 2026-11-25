@@ -68,10 +68,10 @@ class CouncilRepositoryTest {
 
     @Test
     fun assistedImportIsUserSuppliedAndSkipDoesNotInventAResponse() = runBlocking {
-        val id = repository.createConversation("Claude task", ResearchMode.STANDARD)
+        val id = repository.createConversation("Gemini task", ResearchMode.STANDARD)
         val taskId = repository.prepareAssistedTask(
             conversationId = id,
-            providerId = ProviderId.CLAUDE,
+            providerId = ProviderId.GEMINI,
             prompt = "Prepared prompt",
             roundNumber = 1,
         )
@@ -80,7 +80,7 @@ class CouncilRepositoryTest {
         repository.importResponse(
             ImportDraft(
                 conversationId = id,
-                providerId = ProviderId.CLAUDE,
+                providerId = ProviderId.GEMINI,
                 roundNumber = 1,
                 body = "A response the user pasted.",
                 taskId = taskId,
@@ -90,7 +90,7 @@ class CouncilRepositoryTest {
         assertEquals(MessageSource.USER_SUPPLIED_PROVIDER_ATTRIBUTED, messages.single().source)
         assertEquals(AssistedTaskState.COMPLETED, repository.observeTasks(id).first().single().state)
 
-        val second = repository.prepareAssistedTask(id, ProviderId.CHATGPT, "Another prompt", 2)
+        val second = repository.prepareAssistedTask(id, ProviderId.GEMINI, "Another prompt", 2)
         repository.updateTaskState(second, AssistedTaskState.SKIPPED)
         assertEquals(1, repository.observeMessages(id).first().size)
         assertTrue(repository.observeEvents().first().any { it.summary.contains("not an authenticated") })

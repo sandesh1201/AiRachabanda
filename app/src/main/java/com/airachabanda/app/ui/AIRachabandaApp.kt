@@ -186,22 +186,18 @@ fun AIRachabandaApp(
                             val title = question.lineSequence().firstOrNull { it.isNotBlank() }?.take(60) ?: "New conversation"
                             history.create(title, mode) { id ->
                                 val ready = providers.filter { config ->
-                                    config.automatedInferenceEnabled &&
+                                    config.providerId != ProviderId.LOCAL &&
+                                        config.automatedInferenceEnabled &&
                                         com.airachabanda.app.orchestration.ZeroCostPolicy.automatedInferenceAllowed(
                                             config.providerId,
                                             config.billingEligibility,
                                         )
                                 }.map { it.providerId }.toSet()
-                                val local = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
-                                    emptySet()
-                                } else {
-                                    setOf(ProviderId.LOCAL)
-                                }
                                 application.container.pendingDiscussion = PendingDiscussion(
                                     conversationId = id,
                                     question = question,
                                     mode = mode,
-                                    participants = ready + local,
+                                    participants = ready,
                                 )
                                 navController.navigate("council/$id") { launchSingleTop = true }
                             }
@@ -209,7 +205,6 @@ fun AIRachabandaApp(
                         onOpenConversation = { id -> navController.navigate("council/$id") },
                         onOpenCouncil = { navController.navigate("council") },
                         onOpenSettings = { navController.navigate("settings/providers") },
-                        onOpenLocal = { navController.navigate("settings/setup/LOCAL") },
                         onOpenUrl = { url ->
                                 if (url.startsWith("browser:")) {
                                     notice(ExternalLinks.openInBrowser(application, url.removePrefix("browser:")))
@@ -218,7 +213,6 @@ fun AIRachabandaApp(
                                 }
                             },
                         onOpenAccount = { id -> navController.navigate("account/${id.name}") },
-                        localInstalled = com.airachabanda.app.installedModelIds(application.filesDir).isNotEmpty(),
                         contentPadding = padding,
                     )
                 }
@@ -384,6 +378,7 @@ fun AIRachabandaApp(
                                 }
                             },
                             onVerifyGemini = { token, done -> model.verifyGemini(token, done) },
+                            onConnectChatGpt = { openAuth, done -> model.connectChatGpt(openAuth, done) },
                             eligibility = eligibility[id] ?: RuntimeEligibility(credentialStored = id in stored),
                             contentPadding = padding,
                         )
@@ -507,12 +502,7 @@ private fun CouncilRoute(
         onAddMessage = { body -> conversationId?.let { model.addMessage(it, body) } },
         onStart = { question, _ ->
             val id = conversationId ?: return@CouncilScreen
-            val local = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
-                emptySet()
-            } else {
-                setOf(ProviderId.LOCAL)
-            }
-            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, local, notice)
+            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, enabled, notice)
         },
         onAdvance = { conversationId?.let { model.advance(it, notice) } },
         onPrepare = { provider, question, mode, selected ->

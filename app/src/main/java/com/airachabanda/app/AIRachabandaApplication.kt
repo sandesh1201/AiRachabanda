@@ -1,9 +1,9 @@
 package com.airachabanda.app
 
 import android.app.Application
-import android.content.ComponentCallbacks2
-import android.content.res.Configuration
 import androidx.room.Room
+import com.airachabanda.app.core.model.ProviderId
+import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.documents.AttachmentService
 import com.airachabanda.app.documents.GeneratedDocumentService
 import com.airachabanda.app.documents.TemporaryFiles
@@ -16,13 +16,6 @@ import com.airachabanda.app.persistence.UserPreferences
 import com.airachabanda.app.provider.cloudflare.CloudflareAdapter
 import com.airachabanda.app.provider.cloudflare.CloudflareAuthorization
 import com.airachabanda.app.provider.dispatch.PreparedProviderDispatch
-import com.airachabanda.app.provider.local.ondevice.LiteRtLmRuntime
-import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
-import com.airachabanda.app.provider.local.ondevice.OnDevicePreflight
-import com.airachabanda.app.provider.local.ondevice.ThermalLevel
-import android.app.ActivityManager
-import android.os.Build
-import android.os.PowerManager
 import com.airachabanda.app.provider.gemini.GeminiAdapter
 import com.airachabanda.app.provider.gemini.GeminiAuthorization
 import com.airachabanda.app.provider.openrouter.OpenRouterAdapter
@@ -34,8 +27,6 @@ import com.airachabanda.app.security.AndroidKeystoreGateway
 import com.airachabanda.app.security.CredentialAccess
 import com.airachabanda.app.security.CredentialAccounts
 import com.airachabanda.app.security.CredentialStore
-import com.airachabanda.app.core.model.ProviderId
-import com.airachabanda.app.core.model.ResearchMode
 import com.airachabanda.app.security.KeystoreCredentialStore
 import java.io.File
 
@@ -54,14 +45,17 @@ class AIRachabandaApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         TemporaryFiles.sweep(cacheDir, System.currentTimeMillis())
-        registerComponentCallbacks(object : ComponentCallbacks2 {
-            override fun onConfigurationChanged(newConfig: Configuration) = Unit
-            @Deprecated("ComponentCallbacks2 still requires this callback.")
-            override fun onLowMemory() = LiteRtLmRuntime.unload()
-            override fun onTrimMemory(level: Int) {
-                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) LiteRtLmRuntime.unload()
+        Thread {
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    val row = container.councilDao.findProvider(ProviderId.CHATGPT.name)
+                    val enabled = row?.automatedInferenceEnabled == true &&
+                        row.billingEligibility ==
+                        com.airachabanda.app.core.model.BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED.name
+                    com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED = enabled
+                }
             }
-        })
+        }.start()
     }
 }
 
@@ -115,7 +109,7 @@ class AppContainer(context: Application) {
     val orchestration: OrchestrationEngine = OrchestrationEngine(
         council = database.councilDao(),
         discussion = database.discussionDao(),
-        participants = DatabaseParticipantSource(database.councilDao()) { installedModelIds(context.filesDir) },
+        participants = DatabaseParticipantSource(database.councilDao()),
         dispatcher = OpenRouterDispatch(
             adapter = openRouterAdapter,
             council = database.councilDao(),
@@ -130,16 +124,11 @@ class AppContainer(context: Application) {
             discussion = database.discussionDao(),
             clock = { System.currentTimeMillis() },
             ids = { java.util.UUID.randomUUID().toString() },
-            localModels = OnDevicePreflight.modelDirectory(context.filesDir).apply { mkdirs() },
-            localCache = context.cacheDir,
-            localRamBytes = { availableRam(context) },
-            localThermal = { thermal(context) },
         ),
         attachmentContext = { conversationId, sessionId -> attachments.prepare(conversationId, sessionId) },
         onDiscussionStopped = { conversationId -> documents.cancelPending(conversationId) },
-        localModelId = { installedModelIds(context.filesDir).firstOrNull() },
         providerSecret = { id ->
-            if (id != ProviderId.GEMINI) {
+            if (id != ProviderId.GEMINI && id != ProviderId.CHATGPT) {
                 null
             } else {
                 val access = credentialStore.get(id.name, CredentialAccounts.DEFAULT)
@@ -158,29 +147,4 @@ class AppContainer(context: Application) {
 
     @Volatile
     var pendingDiscussion: PendingDiscussion? = null
-}
-
-internal fun installedModelIds(filesDir: File): List<String> {
-    val directory = OnDevicePreflight.modelDirectory(filesDir)
-    return OnDeviceModelCatalog.recommended.mapNotNull { model ->
-        val file = File(directory, model.fileName)
-        if (model.sha256 != null && file.isFile && file.length() == model.sizeBytes) model.id else null
-    }
-}
-
-private fun availableRam(context: Application): Long {
-    val manager = context.getSystemService(ActivityManager::class.java) ?: return 0L
-    val info = ActivityManager.MemoryInfo()
-    manager.getMemoryInfo(info)
-    return info.availMem
-}
-
-private fun thermal(context: Application): ThermalLevel {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ThermalLevel.NORMAL
-    val power = context.getSystemService(PowerManager::class.java) ?: return ThermalLevel.NORMAL
-    return if (power.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) {
-        ThermalLevel.SEVERE
-    } else {
-        ThermalLevel.NORMAL
-    }
 }

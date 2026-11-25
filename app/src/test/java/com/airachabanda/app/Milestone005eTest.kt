@@ -9,7 +9,8 @@ import com.airachabanda.app.orchestration.EligibleParticipant
 import com.airachabanda.app.provider.billing.GeminiBillingPolicy
 import com.airachabanda.app.provider.cloudflare.CloudflarePlanSignal
 import com.airachabanda.app.provider.gemini.GeminiProjectBinding
-import com.airachabanda.app.provider.local.LocalInferencePolicy
+import com.airachabanda.app.provider.ProviderAccess
+import com.airachabanda.app.provider.ProviderAccessMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,26 +56,8 @@ class Milestone005eTest {
     }
 
     @Test
-    fun localSelectionRejectsCloudAndPublicEndpoints() {
-        val ready = LocalInferencePolicy.Selection(
-            modelId = LocalInferencePolicy.FIRST_MODEL,
-            endpointHost = "127.0.0.1",
-            cloudDisabled = true,
-            contextTokens = 2048,
-            timeoutMs = 30_000,
-            budgetRemaining = 1,
-            runtimeInstalled = true,
-        )
-        val prepared = LocalInferencePolicy.prepare(ready)
-        assertTrue(prepared.accepted)
-        assertFalse(prepared.requestPermitted)
-        assertEquals(LocalInferencePolicy.FIRST_MODEL, prepared.modelId)
-
-        assertFalse(LocalInferencePolicy.prepare(ready.copy(modelId = "gemma3:cloud")).accepted)
-        assertFalse(LocalInferencePolicy.prepare(ready.copy(endpointHost = "0.0.0.0")).accepted)
-        assertFalse(LocalInferencePolicy.prepare(ready.copy(cloudDisabled = false)).accepted)
-        assertFalse(LocalInferencePolicy.prepare(ready.copy(runtimeInstalled = false)).accepted)
-        assertFalse(LocalInferencePolicy.prepare(ready.copy(contextTokens = 128_000)).accepted)
+    fun localProviderIsUnavailableAfterOfflineRemoval() {
+        assertTrue(ProviderAccess.profile(ProviderId.LOCAL).modes.contains(ProviderAccessMode.UNAVAILABLE))
         assertFalse(ImportRules.check(ProviderId.LOCAL, "A pasted response", 1).accepted)
     }
 

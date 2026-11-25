@@ -23,6 +23,7 @@ class ProviderAccessTest {
         assertEquals("https://gemini.google.com", ProviderAccess.profile(ProviderId.GEMINI).chatUrl)
         assertEquals(ParticipationMode.UNAVAILABLE, ProviderAccess.active(ProviderId.CLOUDFLARE))
         assertEquals(ParticipationMode.UNAVAILABLE, ProviderAccess.active(ProviderId.GROQ))
+        assertEquals(ParticipationMode.UNAVAILABLE, ProviderAccess.active(ProviderId.CHATGPT))
     }
 
     @Test
@@ -34,15 +35,13 @@ class ProviderAccessTest {
     }
 
     @Test
-    fun assistedImportAcceptsFreeChatAndRejectsApiOnlyProviders() {
-        assertTrue(ImportRules.check(ProviderId.DEEPSEEK, "A pasted response", 1).accepted)
-        assertTrue(ImportRules.check(ProviderId.MISTRAL, "A pasted response", 1).accepted)
+    fun offlineAndClaudeStayUnavailableAndAssistedImportRejectsApiOnlyProviders() {
         assertFalse(ImportRules.check(ProviderId.GROQ, "A pasted response", 1).accepted)
         assertFalse(ImportRules.check(ProviderId.CLOUDFLARE, "A pasted response", 1).accepted)
-        assertTrue(ProviderAccess.assistedProviders().contains(ProviderId.CLAUDE))
-        assertTrue(ProviderAccess.assistedProviders().contains(ProviderId.META_AI))
         assertEquals(ParticipationMode.UNAVAILABLE, ProviderAccess.active(ProviderId.LOCAL))
+        assertEquals(ParticipationMode.UNAVAILABLE, ProviderAccess.active(ProviderId.CLAUDE))
         assertFalse(ProviderAccess.assistedProviders().contains(ProviderId.LOCAL))
-        assertTrue(ProviderAccess.profile(ProviderId.LOCAL).modes.contains(ProviderAccessMode.LOCAL_INFERENCE))
+        assertFalse(ProviderAccess.assistedProviders().contains(ProviderId.CLAUDE))
+        assertTrue(ProviderAccess.profile(ProviderId.LOCAL).modes.contains(ProviderAccessMode.UNAVAILABLE))
     }
 }

@@ -65,22 +65,26 @@ fun ProviderSetupScreen(
     onOpenUrl: (String) -> Unit,
     onRunCheck: (Map<String, String>, (String) -> Unit) -> Unit = { _, done -> done("No automated check was sent.") },
     onVerifyGemini: (String, (String) -> Unit) -> Unit = { _, done -> done("Gemini billing was not checked.") },
+    onConnectChatGpt: ((String) -> Unit, (String) -> Unit) -> Unit = { _, done -> done("ChatGPT connect is unavailable.") },
     eligibility: RuntimeEligibility = RuntimeEligibility(),
     contentPadding: PaddingValues,
 ) {
     val spec = ProviderSetupCatalog.spec(config.providerId)
     val assisted = SetupMethod.FREE_ASSISTED_CHAT in spec.methods
     val automated = SetupMethod.FREE_AUTOMATED_API in spec.methods
-    val local = SetupMethod.LOCAL_INFERENCE in spec.methods
+    val unavailable = spec.methods.isEmpty()
     var methodName by rememberSaveable(config.providerId.name) {
         mutableStateOf(
-            when (config.accountChoice) {
-                AccountChoice.PAID_SUBSCRIPTION -> SetupMethod.SUBSCRIPTION_ASSISTED.name
-                else -> spec.methods.first().name
+            when {
+                config.accountChoice == AccountChoice.PAID_SUBSCRIPTION -> SetupMethod.SUBSCRIPTION_ASSISTED.name
+                spec.methods.isNotEmpty() -> spec.methods.first().name
+                else -> SetupMethod.FREE_AUTOMATED_API.name
             },
         )
     }
-    val method = runCatching { SetupMethod.valueOf(methodName) }.getOrDefault(spec.methods.first())
+    val method = runCatching { SetupMethod.valueOf(methodName) }.getOrDefault(
+        spec.methods.firstOrNull() ?: SetupMethod.FREE_AUTOMATED_API,
+    )
     var first by rememberSaveable(config.providerId.name) { mutableStateOf("") }
     var second by rememberSaveable(config.providerId.name) { mutableStateOf("") }
     var connecting by rememberSaveable(config.providerId.name) { mutableStateOf(false) }
@@ -142,13 +146,23 @@ fun ProviderSetupScreen(
         if (assisted && signIn != null) {
             OutlinedButton(onClick = { onOpenUrl("browser:${signIn.url}") }, modifier = Modifier.fillMaxWidth()) { Text("Open website") }
         }
-        if (spec.id == ProviderId.CHATGPT) {
-            Text(
-                com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.disabledReason(),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+        if (unavailable) {
+            Text(spec.automatedBlocker, style = MaterialTheme.typography.bodyMedium)
         }
-        if (automated) {
+        if (spec.id == ProviderId.CHATGPT && automated) {
+            Button(
+                onClick = {
+                    connecting = true
+                    result = "Waiting for OpenAI authorization to return to this app…"
+                    onConnectChatGpt({ url -> onOpenUrl("browser:$url") }) { message ->
+                        connecting = false
+                        result = message
+                    }
+                },
+                enabled = !connecting,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (credentialStored) "Reconnect ChatGPT" else "Connect ChatGPT") }
+        } else if (automated) {
             if (keyLink != null) {
                 Button(onClick = { onOpenUrl(keyLink.url) }, modifier = Modifier.fillMaxWidth()) { Text("Get API key") }
             }
@@ -179,19 +193,10 @@ fun ProviderSetupScreen(
                 Text(if (credentialStored) "Replace and connect" else "Connect")
             }
         } else if (assisted) {
-            Button(
-                onClick = {
-                    connecting = true
-                    onDeclare(AccountChoice.FREE_ACCOUNT)
-                    onToggle(true)
-                    connecting = false
-                    result = "Manual chat is optional. Opening the website does not connect this app, and no reply is created here."
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (enabled) "Manual chat on" else "Use manual chat") }
-        }
-        if (local) {
-            LocalAiPanel()
+            Text(
+                "Opening the provider website is not an app connection. Manual chat is not selected for automatic Council replies.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced details" else "Advanced details") }
         if (advanced) {

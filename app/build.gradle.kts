@@ -13,8 +13,8 @@ android {
         applicationId = "com.airachabanda.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 33
-        versionName = "0.16.2"
+        versionCode = 34
+        versionName = "0.17.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }
@@ -104,9 +104,6 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.androidx.exifinterface)
     implementation(libs.play.services.auth)
-    implementation(libs.litertlm.android) {
-        exclude(group = "com.google.ai.edge.litert", module = "litert-gpu")
-    }
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

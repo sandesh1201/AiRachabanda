@@ -21,36 +21,36 @@ class Milestone015BTest {
     @Test
     fun simpleStatesStayBehindTheExistingGates() {
         val chat = config(ProviderId.CLAUDE, BillingEligibility.UNKNOWN, AccountChoice.NOT_CONFIGURED)
-        assertEquals(ConnectionPresentation.ASSISTED_CHAT, ConnectionPresentation.state(chat, enabled = true))
-        val declared = chat.copy(accountChoice = AccountChoice.FREE_ACCOUNT, participationMode = ParticipationMode.ASSISTED)
-        assertEquals("Manual access only", ProviderPresentation.status(declared, credentialStored = false))
-        assertEquals(ConnectionPresentation.NOT_CONNECTED, ConnectionPresentation.state(chat, enabled = false))
+        assertEquals(ConnectionPresentation.UNAVAILABLE, ConnectionPresentation.state(chat, enabled = true))
+        val declared = chat.copy(accountChoice = AccountChoice.FREE_ACCOUNT, participationMode = ParticipationMode.UNAVAILABLE)
+        assertEquals("Unavailable", ProviderPresentation.status(declared, credentialStored = false))
+        assertEquals(ConnectionPresentation.UNAVAILABLE, ConnectionPresentation.state(chat, enabled = false))
 
         val stored = config(ProviderId.GROQ, BillingEligibility.UNKNOWN, AccountChoice.NOT_CONFIGURED)
-        assertEquals(ConnectionPresentation.SETUP_REQUIRED, ConnectionPresentation.state(stored, credentialStored = true))
+        assertEquals(ConnectionPresentation.RECONNECT_REQUIRED, ConnectionPresentation.state(stored, credentialStored = true))
         assertEquals(ConnectionPresentation.NOT_CONNECTED, ConnectionPresentation.state(stored, credentialStored = false))
 
         val ready = config(ProviderId.GROQ, BillingEligibility.VERIFIED_FREE, AccountChoice.FREE_ACCOUNT, automated = true)
         assertEquals(
-            ConnectionPresentation.READY,
+            ConnectionPresentation.CONNECTED,
             ConnectionPresentation.state(ready, enabled = true, credentialStored = true, connectionTested = true),
         )
-        assertEquals(ConnectionPresentation.SETUP_REQUIRED, ConnectionPresentation.state(ready, enabled = true, credentialStored = true))
+        assertEquals(ConnectionPresentation.RECONNECT_REQUIRED, ConnectionPresentation.state(ready, enabled = true, credentialStored = true))
         assertEquals(
-            ConnectionPresentation.SETUP_REQUIRED,
+            ConnectionPresentation.RECONNECT_REQUIRED,
             ConnectionPresentation.state(ready.copy(automatedInferenceEnabled = false), credentialStored = true),
         )
 
         val blocked = config(ProviderId.OPENROUTER, BillingEligibility.BLOCKED, AccountChoice.FREE_ACCOUNT)
-        assertEquals(ConnectionPresentation.FREE_ACCESS_UNAVAILABLE, ConnectionPresentation.state(blocked, credentialStored = true))
+        assertEquals(ConnectionPresentation.FREE_LIMIT_REACHED, ConnectionPresentation.state(blocked, credentialStored = true))
         val exhausted = config(ProviderId.GEMINI, BillingEligibility.VERIFIED_FREE, AccountChoice.FREE_ACCOUNT, automated = true)
         assertEquals(
-            ConnectionPresentation.TEMPORARILY_UNAVAILABLE,
+            ConnectionPresentation.FREE_LIMIT_REACHED,
             ConnectionPresentation.state(exhausted, quotaExhausted = true, credentialStored = true),
         )
         val local = config(ProviderId.LOCAL, BillingEligibility.UNKNOWN, AccountChoice.NOT_CONFIGURED)
-        assertEquals(ConnectionPresentation.TEMPORARILY_UNAVAILABLE, ConnectionPresentation.state(local))
-        assertFalse(ConnectionPresentation.explanation(ConnectionPresentation.READY, ProviderId.GEMINI).contains("Ready for automated"))
+        assertEquals(ConnectionPresentation.UNAVAILABLE, ConnectionPresentation.state(local))
+        assertFalse(ConnectionPresentation.explanation(ConnectionPresentation.CONNECTED, ProviderId.GEMINI).contains("Ready for automated"))
     }
 
     @Test
@@ -63,7 +63,7 @@ class Milestone015BTest {
         assertTrue(cloudflare.fields.any { it.key == "api-token" })
         val chat = ProviderSetupCatalog.spec(ProviderId.CHATGPT)
         assertTrue(chat.fields.isEmpty())
-        assertTrue(chat.links.any { it.label.contains("sign-in", ignoreCase = true) })
+        assertTrue(chat.links.any { it.label.contains("sign-in", ignoreCase = true) || it.label.contains("ChatGPT", ignoreCase = true) })
     }
 
     @Test

@@ -708,6 +708,85 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun connectChatGpt(openAuthorization: (String) -> Unit, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val hostFile = java.io.File(container.filesDir, "chatgpt-host-id.txt")
+            val hostId = hostFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
+                .ifBlank { com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.newHostId() }
+                .also { hostFile.writeText(it) }
+            val session = com.airachabanda.app.provider.chatgpt.ChatGptConnectSession(hostId = hostId)
+            try {
+                openAuthorization(session.request.authorizationUrl)
+                val params = session.awaitAuthorization()
+                if (params["error"] != null) {
+                    onResult("Authorization was declined: ${params["error"]}. ${params["error_description"].orEmpty()}".trim())
+                    return@launch
+                }
+                if (params["state"] != session.request.state) {
+                    onResult("The authorization state did not match. No token was exchanged.")
+                    return@launch
+                }
+                val code = params["code"].orEmpty()
+                if (code.isBlank()) {
+                    onResult("The authorization callback had no code.")
+                    return@launch
+                }
+                val tokens = com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.exchangeCode(
+                    code = code,
+                    codeVerifier = session.request.codeVerifier,
+                    redirectUri = session.request.redirectUri,
+                    clientId = session.request.issuedClientId
+                        ?: com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.DYNAMIC_CLIENT_ID,
+                )
+                credentials.put(
+                    ProviderId.CHATGPT.name,
+                    CredentialAccounts.DEFAULT,
+                    tokens.accessToken.toByteArray(Charsets.UTF_8),
+                )
+                if (!tokens.refreshToken.isNullOrBlank()) {
+                    credentials.put(
+                        ProviderId.CHATGPT.name,
+                        "refresh",
+                        tokens.refreshToken.toByteArray(Charsets.UTF_8),
+                    )
+                }
+                val completion = com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.complete(
+                    accessToken = tokens.accessToken,
+                    prompt = com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.TEST_PROMPT,
+                )
+                if (!completion.completed) {
+                    com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED = false
+                    onResult(completion.failure ?: "ChatGPT authorization returned, but the inference test failed.")
+                    return@launch
+                }
+                com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED = true
+                container.repository.recordVerifiedAutomation(
+                    ProviderId.CHATGPT,
+                    BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED,
+                )
+                preferences.setParticipantEnabled(ProviderId.CHATGPT, true)
+                credentialRevision.value = credentialRevision.value + 1
+                recordEligibility(
+                    ProviderId.CHATGPT,
+                    RuntimeEligibility(
+                        credentialStored = true,
+                        authenticationVerified = true,
+                        billingVerified = true,
+                        eligibleModelDiscovered = true,
+                        connectionTested = true,
+                        detail = "ChatGPT plan usage connected with model ${completion.modelId}.",
+                    ),
+                )
+                onResult("ChatGPT is Connected. A live reply arrived from ${completion.modelId}.")
+            } catch (error: Throwable) {
+                com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.AUTOMATED_INFERENCE_ENABLED = false
+                onResult(error.message ?: "ChatGPT connection failed.")
+            } finally {
+                session.close()
+            }
+        }
+    }
+
     fun verifyGemini(accessToken: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
             val apiKey = readGeminiKey()

@@ -96,18 +96,16 @@ fun HomeScreen(
     onOpenConversation: (String) -> Unit,
     onOpenCouncil: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenLocal: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onOpenAccount: (ProviderId) -> Unit,
-    localInstalled: Boolean,
     contentPadding: PaddingValues,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     var mode by rememberSaveable(defaultMode.name) { mutableStateOf(defaultMode) }
     var learnMore by rememberSaveable { mutableStateOf(false) }
     var chooseStart by rememberSaveable { mutableStateOf(false) }
-    val automatic = ChatReadiness.automatic(localInstalled, providers)
-    val featured = listOf(ProviderId.CHATGPT, ProviderId.CLAUDE, ProviderId.GEMINI, ProviderId.LOCAL)
+    val automatic = ChatReadiness.automatic(providers)
+    val featured = listOf(ProviderId.CHATGPT, ProviderId.GEMINI, ProviderId.GROQ, ProviderId.OPENROUTER)
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(contentPadding).imePadding(),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -158,8 +156,8 @@ fun HomeScreen(
                     }
                 }
                 Text(
-                    if (automatic) "An automatic AI is ready. Send asks it inside this chat."
-                    else "No automatic AI is ready. Connect one, download an offline model, or choose assisted chat.",
+                    if (automatic) "An online AI is connected. Send asks it inside this chat."
+                    else "Connect an online AI account before sending. Opening a website alone does not connect this app.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -190,15 +188,17 @@ fun HomeScreen(
                         val config = providers.firstOrNull { it.providerId == id }
                         val name = ProviderRegistry.definition(id).displayName
                         val status = when {
-                            id == ProviderId.LOCAL && localInstalled -> "Installed"
-                            id == ProviderId.LOCAL -> "Download"
                             config == null -> "Loading"
                             else -> {
-                            val label = providerStatus(config, enabledProviders)
-                            if (label == "Assisted chat available") "Manual access only" else label
+                                val label = providerStatus(config, enabledProviders)
+                                when (label) {
+                                    "Assisted chat available", "Manual access only", "Ready" ->
+                                        if (config.automatedInferenceEnabled) "Connected" else "Not connected"
+                                    else -> label
+                                }
+                            }
                         }
-                        }
-                        Card(onClick = { if (id == ProviderId.LOCAL) onOpenLocal() else onOpenAccount(id) }) {
+                        Card(onClick = { onOpenAccount(id) }) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                                 Text(name, style = MaterialTheme.typography.titleSmall)
                                 Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -242,20 +242,13 @@ fun HomeScreen(
     if (chooseStart) {
         AlertDialog(
             onDismissRequest = { chooseStart = false },
-            title = { Text("Choose how to answer") },
-            text = { Text("No automatic AI is ready. Connect an AI, download the offline model, or use assisted chat and bring the reply back yourself.") },
+            title = { Text("Connect an AI first") },
+            text = { Text("No online AI is connected. Connect ChatGPT, Gemini, Groq, or another supported provider, then send your question again. Assisted chat and offline models are not used.") },
             confirmButton = {
-                TextButton(onClick = {
-                    chooseStart = false
-                    onStart(draft, mode)
-                    draft = ""
-                }) { Text("Use assisted chat") }
+                TextButton(onClick = { chooseStart = false; onOpenSettings() }) { Text("Connect an AI") }
             },
             dismissButton = {
-                Row {
-                    TextButton(onClick = { chooseStart = false; onOpenSettings() }) { Text("Connect an AI") }
-                    TextButton(onClick = { chooseStart = false; onOpenLocal() }) { Text("Download model") }
-                }
+                TextButton(onClick = { chooseStart = false }) { Text("Cancel") }
             },
         )
     }
@@ -1293,7 +1286,7 @@ private fun accessLine(id: ProviderId): String {
             AccessLabel.FREE_CHAT -> "Free chat available"
             AccessLabel.CONFIGURATION_REQUIRED -> "Configuration required"
             AccessLabel.BILLING_VERIFICATION_REQUIRED -> "Billing verification required"
-            AccessLabel.LOCAL_INFERENCE -> "Local inference"
+            AccessLabel.LOCAL_INFERENCE -> "Unavailable"
             AccessLabel.UNAVAILABLE -> "Unavailable"
         }
     }
