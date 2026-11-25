@@ -36,6 +36,7 @@ Live inference stays unauthorized until a milestone explicitly names the provide
 - Milestone 015E: LiteRT-LM 0.20.0 is packaged for CPU after the owner approved that runtime. The GPU artifact is excluded. Gemma and Qwen weights stay untransferred. No live inference request was sent.
 - Milestone 015F: Version 0.15.6, versionCode 29, was published as the debug-signed pre-release `v0.15.6-beta`. That release stays available. `master` tracks one replaceable file, `APK/AI-Rachabanda-Latest.apk`. Replacing it keeps the previous blob in Git history. Physical-device results remain pending. No model weights were downloaded.
 - Milestone 016A: The owner rejected the 0.15.7 presentation on a Galaxy Z Fold 6. Version 0.16.0 presents Home, Chat, Chats, and Settings, with discussion controls and technical details shown only in context. Emulator screenshots are not Fold 6 results.
+- Milestone 016B: The owner rejected 0.16.0 on a Fold 6 because no AI answered. Version 0.16.1 opens ChatGPT in the browser, stops a question from becoming an unexplained wait, and sends the question to an installed local model. No model file was downloaded in development, and no live model reply was recorded.
 
 ## Next
 

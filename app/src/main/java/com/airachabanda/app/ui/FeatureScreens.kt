@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -46,10 +48,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -88,84 +96,128 @@ fun HomeScreen(
     onOpenConversation: (String) -> Unit,
     onOpenCouncil: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenLocal: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onOpenAccount: (ProviderId) -> Unit,
+    localInstalled: Boolean,
     contentPadding: PaddingValues,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     var mode by rememberSaveable(defaultMode.name) { mutableStateOf(defaultMode) }
     var learnMore by rememberSaveable { mutableStateOf(false) }
-    val assisted = ProviderAccess.assistedProviders().map { ProviderRegistry.definition(it).displayName }
+    var chooseStart by rememberSaveable { mutableStateOf(false) }
+    val automatic = ChatReadiness.automatic(localInstalled, providers)
+    val featured = listOf(ProviderId.CHATGPT, ProviderId.CLAUDE, ProviderId.GEMINI, ProviderId.LOCAL)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 20.dp).imePadding(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 28.dp, bottom = 24.dp),
+        modifier = Modifier.fillMaxSize().padding(contentPadding).imePadding(),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        contentPadding = PaddingValues(bottom = 28.dp),
     ) {
         item {
-            Text(
-                "AI Rachabanda",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.semantics { contentDescription = "AI Rachabanda" },
-            )
-            Text(
-                "Multiple Perspectives. Collective Intelligence.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        item {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Ask a question") },
-                minLines = 3,
-            )
-            FlowRow(
-                Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFF10233F), Color(0xFF3D4DB8), Color(0xFF6D4AFF)),
+                        ),
+                    )
+                    .padding(20.dp),
             ) {
-                ResearchMode.entries.forEach { entry ->
-                    FilterChip(
-                        selected = mode == entry,
-                        onClick = { mode = entry },
-                        label = { Text(entry.label()) },
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PerspectiveMark()
+                    Text(
+                        "AI Rachabanda",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        modifier = Modifier.semantics { contentDescription = "AI Rachabanda" },
+                    )
+                    Text(
+                        "Multiple Perspectives. Collective Intelligence.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFFE4E8FF),
                     )
                 }
             }
-            TextButton(onClick = { learnMore = !learnMore }) { Text(if (learnMore) "Hide details" else "Learn more") }
-            if (learnMore) {
-                Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Ask a question") },
+                    minLines = 3,
+                    shape = RoundedCornerShape(20.dp),
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ResearchMode.entries.forEach { entry ->
+                        FilterChip(selected = mode == entry, onClick = { mode = entry }, label = { Text(entry.label()) })
+                    }
+                }
+                Text(
+                    if (automatic) "An automatic AI is ready. Send asks it inside this chat."
+                    else "No automatic AI is ready. Connect one, download an offline model, or choose assisted chat.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = {
+                        if (automatic) {
+                            onStart(draft, mode)
+                            draft = ""
+                        } else {
+                            chooseStart = true
+                        }
+                    },
+                    enabled = draft.isNotBlank(),
+                    modifier = Modifier.height(48.dp),
+                ) { Text("Send") }
+                TextButton(onClick = { learnMore = !learnMore }) { Text(if (learnMore) "Hide details" else "Learn more") }
+                if (learnMore) Text(ModeGuide.summary(mode), style = MaterialTheme.typography.bodySmall)
             }
-            Text(
-                "No automatic AI is connected. You can still start, then copy a prompt into ${assisted.take(3).joinToString(", ")}.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            Button(
-                onClick = {
-                    onStart(draft, mode)
-                    draft = ""
-                },
-                enabled = draft.isNotBlank(),
-                modifier = Modifier.padding(top = 12.dp).height(48.dp),
-            ) { Text("Send") }
         }
         item {
-            Text("Available", style = MaterialTheme.typography.titleMedium)
-            Text(providerSummary(providers, enabledProviders), style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = onOpenSettings) { Text("AI providers") }
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Participants", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = onOpenSettings) { Text("Manage") }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    featured.forEach { id ->
+                        val config = providers.firstOrNull { it.providerId == id }
+                        val name = ProviderRegistry.definition(id).displayName
+                        val status = when {
+                            id == ProviderId.LOCAL && localInstalled -> "Installed"
+                            id == ProviderId.LOCAL -> "Download"
+                            config == null -> "Loading"
+                            else -> providerStatus(config, enabledProviders)
+                        }
+                        Card(onClick = { if (id == ProviderId.LOCAL) onOpenLocal() else onOpenAccount(id) }) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                Text(name, style = MaterialTheme.typography.titleSmall)
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
         }
         item {
-            Text("Recent", style = MaterialTheme.typography.titleMedium)
-            if (conversations.isEmpty()) {
-                Text("Your conversations will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Recent", style = MaterialTheme.typography.titleMedium)
+                if (conversations.isEmpty()) {
+                    Text("Your conversations will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         items(conversations.take(6), key = { it.id }) { conversation ->
-            Card(onClick = { onOpenConversation(conversation.id) }, modifier = Modifier.fillMaxWidth()) {
+            Card(
+                onClick = { onOpenConversation(conversation.id) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(conversation.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                     Text(conversation.researchMode.label(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -173,12 +225,46 @@ fun HomeScreen(
             }
         }
         item {
-            Text("Try", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilterChip(selected = false, onClick = { mode = ResearchMode.DEEP_RESEARCH }, label = { Text("Research") })
                 FilterChip(selected = false, onClick = { mode = ResearchMode.STANDARD }, label = { Text("Compare views") })
                 FilterChip(selected = false, onClick = onOpenCouncil, label = { Text("Open chat") })
             }
+        }
+    }
+    if (chooseStart) {
+        AlertDialog(
+            onDismissRequest = { chooseStart = false },
+            title = { Text("Choose how to answer") },
+            text = { Text("No automatic AI is ready. Connect an AI, download the offline model, or use assisted chat and bring the reply back yourself.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    chooseStart = false
+                    onStart(draft, mode)
+                    draft = ""
+                }) { Text("Use assisted chat") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { chooseStart = false; onOpenSettings() }) { Text("Connect an AI") }
+                    TextButton(onClick = { chooseStart = false; onOpenLocal() }) { Text("Download model") }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun PerspectiveMark() {
+    Canvas(Modifier.size(72.dp).semantics { contentDescription = "Several AI perspectives" }) {
+        val colors = listOf(Color(0x66FFFFFF), Color(0x99D4C4FF), Color(0xCCFFFFFF))
+        val centers = listOf(Offset(size.width * 0.32f, size.height * 0.55f), Offset(size.width * 0.5f, size.height * 0.34f), Offset(size.width * 0.68f, size.height * 0.58f))
+        colors.indices.forEach { index ->
+            drawCircle(color = colors[index], radius = size.minDimension * 0.28f, center = centers[index])
         }
     }
 }
@@ -365,6 +451,7 @@ fun CouncilScreen(
         }
         val showFilesInConversation = width != AdaptiveWidth.EXPANDED || conversationOnly || fold.tabletop
         val discussion = @Composable {
+            val linkContext = LocalContext.current
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val people = stage?.participantControls.orEmpty()
                 if (people.isNotEmpty()) {
@@ -378,13 +465,30 @@ fun CouncilScreen(
                 if (messages.isEmpty()) {
                     EmptyPanel(
                         if (phase == DiscussionPresence.WAITING) {
-                            "Your question is in the title. Open Details to copy a prompt into an assistant."
+                            "No automatic AI answered. Copy the prompt into the assistant, then paste the reply in the message box."
                         } else {
                             "Ask a question to begin. Nothing is sent until you choose Send."
                         },
                     )
                 } else {
                     messages.forEach { message -> MessageCard(message) }
+                }
+                if (phase == DiscussionPresence.WAITING) {
+                    val waiting = tasks.firstOrNull { it.state == AssistedTaskState.AWAITING_USER_RESPONSE }
+                    val note = stage?.statusNote?.takeIf { it.isNotBlank() }
+                        ?: "No automatic AI is ready. Open the assistant, paste the prompt, and bring the reply back."
+                    Text(note, style = MaterialTheme.typography.bodyMedium)
+                    if (waiting != null) {
+                        val name = ProviderRegistry.definition(waiting.providerId).displayName
+                        Text("$name needs this prompt. The reply you paste is marked as yours.", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { ExternalLinks.copy(linkContext, name, waiting.prompt) }) { Text("Copy prompt") }
+                            val chat = ProviderAccess.profile(waiting.providerId).chatUrl
+                            if (chat != null) {
+                                TextButton(onClick = { ExternalLinks.openInBrowser(linkContext, chat) }) { Text("Open in browser") }
+                            }
+                        }
+                    }
                 }
                 if (showDocuments && showFilesInConversation && attachments.isEmpty()) {
                     Text("No file is attached. Choosing a file copies it into app storage. It is not uploaded.")

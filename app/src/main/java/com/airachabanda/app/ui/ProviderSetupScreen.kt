@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -140,6 +141,13 @@ fun ProviderSetupScreen(
         if (result.isNotBlank()) Text(result, style = MaterialTheme.typography.bodyMedium)
         if (assisted && signIn != null) {
             Button(onClick = { onOpenUrl(signIn.url) }, modifier = Modifier.fillMaxWidth()) { Text("Official sign-in") }
+            OutlinedButton(onClick = { onOpenUrl("browser:${signIn.url}") }, modifier = Modifier.fillMaxWidth()) { Text("Open in browser") }
+        }
+        if (spec.id == com.airachabanda.app.core.model.ProviderId.CHATGPT) {
+            Text(
+                "Sign in with ChatGPT plan usage is only available to participating apps. This app is not one of them. A website sign-in does not create an automatic reply, and this app does not spend your ChatGPT allowance or credits.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
         if (automated) {
             if (keyLink != null) {

@@ -289,7 +289,7 @@ class CouncilWorkflow(
             custom ?: DiscussionBudgets.standard().copy(rounds = roundLimit.coerceIn(1, DiscussionBudgets.MAX_ROUNDS)),
         )
         val capabilities = if (budgets.verificationRequired) setOf(RoleAssignment.VERIFICATION) else emptySet()
-        val snapshot = engine.acceptQuestion(
+        val accepted = engine.acceptQuestion(
             ResearchStart(
                 conversationId = conversationId,
                 question = question,
@@ -306,6 +306,7 @@ class CouncilWorkflow(
                 researchRequests = budgets.researchRequests,
             ),
         )
+        val snapshot = engine.runInstalledModel(accepted.sessionId)
         val assisted = inspect(conversationId).assistedOnly
         val assistance = if (assisted) {
             " Only assisted providers are available. You need to submit each prompt yourself and import the response."
@@ -454,6 +455,7 @@ class CouncilWorkflow(
                 recipientParticipantId = actor,
             ),
         )
+        engine.runInstalledModel(session.id)
         return result.reason
     }
 

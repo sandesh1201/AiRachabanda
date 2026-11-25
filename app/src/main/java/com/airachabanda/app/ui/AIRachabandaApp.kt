@@ -185,11 +185,16 @@ fun AIRachabandaApp(
                         onStart = { question, mode ->
                             val title = question.lineSequence().firstOrNull { it.isNotBlank() }?.take(60) ?: "New conversation"
                             history.create(title, mode) { id ->
+                                val participants = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
+                                    enabled
+                                } else {
+                                    enabled + ProviderId.LOCAL
+                                }
                                 application.container.pendingDiscussion = PendingDiscussion(
                                     conversationId = id,
                                     question = question,
                                     mode = mode,
-                                    participants = enabled,
+                                    participants = participants,
                                 )
                                 navController.navigate("council/$id") { launchSingleTop = true }
                             }
@@ -197,8 +202,16 @@ fun AIRachabandaApp(
                         onOpenConversation = { id -> navController.navigate("council/$id") },
                         onOpenCouncil = { navController.navigate("council") },
                         onOpenSettings = { navController.navigate("settings/providers") },
-                        onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
+                        onOpenLocal = { navController.navigate("settings/setup/LOCAL") },
+                        onOpenUrl = { url ->
+                                if (url.startsWith("browser:")) {
+                                    notice(ExternalLinks.openInBrowser(application, url.removePrefix("browser:")))
+                                } else {
+                                    notice(ExternalLinks.openHttps(application, url))
+                                }
+                            },
                         onOpenAccount = { id -> navController.navigate("account/${id.name}") },
+                        localInstalled = com.airachabanda.app.installedModelIds(application.filesDir).isNotEmpty(),
                         contentPadding = padding,
                     )
                 }
@@ -348,7 +361,13 @@ fun AIRachabandaApp(
                                 }
                             },
                             onToggle = { on -> model.setParticipantEnabled(id, on) },
-                            onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
+                            onOpenUrl = { url ->
+                                if (url.startsWith("browser:")) {
+                                    notice(ExternalLinks.openInBrowser(application, url.removePrefix("browser:")))
+                                } else {
+                                    notice(ExternalLinks.openHttps(application, url))
+                                }
+                            },
                             onRunCheck = { values, done ->
                                 when (id) {
                                     ProviderId.GROQ -> model.checkGroq(values["api-key"].orEmpty(), done)
@@ -481,7 +500,12 @@ private fun CouncilRoute(
         onAddMessage = { body -> conversationId?.let { model.addMessage(it, body) } },
         onStart = { question, selected ->
             val id = conversationId ?: return@CouncilScreen
-            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, selected, notice)
+            val selectedWithLocal = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
+                selected
+            } else {
+                selected + ProviderId.LOCAL
+            }
+            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, selectedWithLocal, notice)
         },
         onAdvance = { conversationId?.let { model.advance(it, notice) } },
         onPrepare = { provider, question, mode, selected ->
@@ -515,7 +539,13 @@ private fun CouncilRoute(
             val chat = com.airachabanda.app.provider.ProviderAccess.profile(task.providerId).chatUrl
             if (chat != null) notice(ExternalLinks.openHttps(application, chat))
         },
-        onOpenUrl = { url -> notice(ExternalLinks.openHttps(application, url)) },
+        onOpenUrl = { url ->
+                                if (url.startsWith("browser:")) {
+                                    notice(ExternalLinks.openInBrowser(application, url.removePrefix("browser:")))
+                                } else {
+                                    notice(ExternalLinks.openHttps(application, url))
+                                }
+                            },
         onSkip = { taskId -> conversationId?.let { model.skip(it, taskId) } },
         onDefer = model::defer,
         onImport = { provider, taskId ->

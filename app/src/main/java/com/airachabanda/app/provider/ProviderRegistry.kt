@@ -13,7 +13,7 @@ object ProviderRegistry {
             id = ProviderId.CHATGPT,
             displayName = "ChatGPT",
             kind = ProviderKind.CONSUMER_PRODUCT,
-            summary = "Official Sign in with ChatGPT is prepared and not executed. Assisted participation is available. Automated inference is disabled.",
+            summary = "The ChatGPT website can be opened in the browser. Sign in with ChatGPT plan usage is limited to participating apps, and this app is not one of them. A website sign-in is not an automatic connection.",
             defaultParticipation = ParticipationMode.ASSISTED,
             defaultBilling = BillingEligibility.USER_CONFIGURATION_REQUIRED,
             defaultIntegration = IntegrationMethod.OAUTH_PLAN_USAGE_PREPARED,

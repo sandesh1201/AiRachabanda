@@ -10,6 +10,24 @@ import com.airachabanda.app.provider.AccessLabel
 import com.airachabanda.app.provider.ProviderAccess
 import com.airachabanda.app.provider.ProviderAccessMode
 
+object ChatReadiness {
+    fun automatic(localInstalled: Boolean, providers: List<ProviderConfig>): Boolean {
+        if (localInstalled) return true
+        return providers.any { config ->
+            val modes = ProviderAccess.profile(config.providerId).modes
+            val verified = config.billingEligibility == BillingEligibility.VERIFIED_FREE ||
+                config.billingEligibility == BillingEligibility.INCLUDED_SUBSCRIPTION_VERIFIED
+            verified &&
+                config.automatedInferenceEnabled &&
+                ProviderAccessMode.FREE_AUTOMATED_API in modes &&
+                com.airachabanda.app.orchestration.ZeroCostPolicy.automatedInferenceAllowed(
+                    config.providerId,
+                    config.billingEligibility,
+                )
+        }
+    }
+}
+
 object DiscussionPresence {
     const val READY = "Ready"
     const val RUNNING = "Running"
@@ -28,7 +46,7 @@ object DiscussionPresence {
     fun summary(stage: String?, pending: Int): String = when (phase(stage)) {
         READY -> "Ready to start"
         PAUSED -> "Paused"
-        WAITING -> "Waiting for your reply"
+        WAITING -> "Bring the assistant's reply back"
         FINISHED -> stage ?: FINISHED
         else -> if (pending > 0) "${stage ?: RUNNING} · $pending still open" else stage ?: RUNNING
     }

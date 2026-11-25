@@ -55,10 +55,11 @@ fun interface ParticipantSource {
 
 class DatabaseParticipantSource(
     private val dao: CouncilDao,
+    private val installedLocalModels: () -> List<String> = { emptyList() },
 ) : ParticipantSource {
     override suspend fun load(): List<EligibleParticipant> {
         val rows = dao.providerConfigs()
-        return ProviderRegistry.all.mapNotNull { definition ->
+        val remote = ProviderRegistry.all.mapNotNull { definition ->
             val row = rows.firstOrNull { it.providerId == definition.id.name }
             val participation = row?.participationMode?.let(ParticipationMode::valueOf)
                 ?: definition.defaultParticipation
@@ -70,6 +71,7 @@ class DatabaseParticipantSource(
                 ParticipationMode.UNAVAILABLE -> null
             }
         }
+        return remote + com.airachabanda.app.provider.local.ondevice.OnDeviceParticipation.seats(installedLocalModels())
     }
 }
 
@@ -110,6 +112,7 @@ class OrchestrationEngine(
     private val nameResolver: (String) -> List<java.net.InetAddress> = { host -> java.net.InetAddress.getAllByName(host).toList() },
     private val attachmentContext: suspend (conversationId: String, sessionId: String) -> String = { _, _ -> "" },
     private val onDiscussionStopped: suspend (conversationId: String) -> Unit = {},
+    private val localModelId: () -> String? = { null },
 ) {
     private val mutex = Mutex()
 
@@ -1058,7 +1061,7 @@ class OrchestrationEngine(
             assistedOpen -> move(
                 sessionId,
                 SessionState.AWAITING_USER_RESPONSE,
-                "Waiting for assisted research. No response was invented.",
+                "No automatic AI is ready. Open the assistant, paste the prompt, and bring the reply back. No response was invented.",
                 await = SessionState.INDEPENDENT_RESEARCH.name,
             )
             else -> move(sessionId, SessionState.BLOCKED, "No research task could be started.")
@@ -1115,7 +1118,7 @@ class OrchestrationEngine(
                 move(
                     session.id,
                     SessionState.AWAITING_USER_RESPONSE,
-                    "Waiting for an assisted participant. No automated participant is ready, and no response was invented.",
+                    "No automatic AI is ready. Open the assistant, paste the prompt, and bring the reply back. No response was invented.",
                     await = SessionState.INDEPENDENT_RESEARCH.name,
                 )
                 true
@@ -1407,16 +1410,20 @@ class OrchestrationEngine(
         queued: Boolean = false,
     ): String {
         val session = fresh(participant.sessionId)
+        val provider = ProviderId.valueOf(participant.providerId)
         val automated = participant.participationMode == ParticipationMode.AUTOMATED.name &&
-            ZeroCostPolicy.automatedInferenceAllowed(
-                ProviderId.valueOf(participant.providerId),
-                BillingEligibility.valueOf(participant.billingEligibility),
-            )
+            (provider == ProviderId.LOCAL ||
+                ZeroCostPolicy.automatedInferenceAllowed(
+                    provider,
+                    BillingEligibility.valueOf(participant.billingEligibility),
+                ))
         var state = if (automated) AssistedTaskState.READY else AssistedTaskState.AWAITING_USER_RESPONSE
         if (queued) state = AssistedTaskState.QUEUED
         var markAutomated = false
         if (!queued && participant.participationMode == ParticipationMode.AUTOMATED.name) {
-            val ceiling = if (kind == KIND_RESEARCH || kind == KIND_FOLLOW_UP) {
+            val ceiling = if (provider == ProviderId.LOCAL) {
+                session.requestBudget
+            } else if (kind == KIND_RESEARCH || kind == KIND_FOLLOW_UP) {
                 (session.requestBudget - reservedReviewSlots(session.id)).coerceAtLeast(0)
             } else {
                 session.requestBudget
@@ -1638,7 +1645,7 @@ class OrchestrationEngine(
             ?: return DispatchOutcome(OpenRouterFailure.POLICY, "The session is not open.", completed = false)
         dispatchBlocked(session, task)?.let { return DispatchOutcome(OpenRouterFailure.POLICY, it, completed = false) }
         val remaining = session.requestBudget - session.requestsConsumed
-        if (remaining <= 0) {
+        if (remaining <= 0 && !call.alreadyReserved) {
             return DispatchOutcome(OpenRouterFailure.BUDGET_BLOCKED, "The session request budget is exhausted. No request was sent.", completed = false)
         }
         val active = prepared
@@ -1649,15 +1656,45 @@ class OrchestrationEngine(
             taskId = taskId,
             roundNumber = task.roundNumber,
             prompt = task.prompt,
-            sessionBudgetRemaining = remaining,
+            sessionBudgetRemaining = remaining.coerceAtLeast(1),
             call = call,
         )
+    }
+
+    suspend fun runInstalledModel(sessionId: String): SessionSnapshot {
+        val modelId = localModelId() ?: return snapshot(sessionId)
+        val ready = council.tasksForSession(sessionId).filter {
+            it.providerId == ProviderId.LOCAL.name &&
+                it.automated &&
+                it.state == AssistedTaskState.READY.name
+        }
+        if (ready.isEmpty()) return snapshot(sessionId)
+        ready.forEach { task ->
+            val outcome = dispatchPrepared(
+                sessionId,
+                task.id,
+                PreparedCall(
+                    providerId = ProviderId.LOCAL,
+                    modelId = modelId,
+                    secret = "",
+                    alreadyReserved = true,
+                ),
+            )
+            council.updateTaskState(
+                task.id,
+                if (outcome.completed) AssistedTaskState.COMPLETED.name else AssistedTaskState.FAILED.name,
+                clock(),
+            )
+            if (!outcome.completed) note(sessionId, outcome.reason)
+        }
+        return advance(sessionId)
     }
 
     private fun select(raw: List<EligibleParticipant>): List<EligibleParticipant> =
         raw.mapNotNull { candidate ->
             val automated = !candidate.assisted &&
-                ZeroCostPolicy.automatedInferenceAllowed(candidate.providerId, candidate.billing)
+                (candidate.providerId == ProviderId.LOCAL ||
+                    ZeroCostPolicy.automatedInferenceAllowed(candidate.providerId, candidate.billing))
             when {
                 candidate.assisted -> candidate
                 automated -> candidate

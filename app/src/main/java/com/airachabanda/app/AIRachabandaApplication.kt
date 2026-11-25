@@ -17,6 +17,7 @@ import com.airachabanda.app.provider.cloudflare.CloudflareAdapter
 import com.airachabanda.app.provider.cloudflare.CloudflareAuthorization
 import com.airachabanda.app.provider.dispatch.PreparedProviderDispatch
 import com.airachabanda.app.provider.local.ondevice.LiteRtLmRuntime
+import com.airachabanda.app.provider.local.ondevice.OnDeviceModelCatalog
 import com.airachabanda.app.provider.local.ondevice.OnDevicePreflight
 import com.airachabanda.app.provider.local.ondevice.ThermalLevel
 import android.app.ActivityManager
@@ -112,7 +113,7 @@ class AppContainer(context: Application) {
     val orchestration: OrchestrationEngine = OrchestrationEngine(
         council = database.councilDao(),
         discussion = database.discussionDao(),
-        participants = DatabaseParticipantSource(database.councilDao()),
+        participants = DatabaseParticipantSource(database.councilDao()) { installedModelIds(context.filesDir) },
         dispatcher = OpenRouterDispatch(
             adapter = openRouterAdapter,
             council = database.councilDao(),
@@ -134,12 +135,21 @@ class AppContainer(context: Application) {
         ),
         attachmentContext = { conversationId, sessionId -> attachments.prepare(conversationId, sessionId) },
         onDiscussionStopped = { conversationId -> documents.cancelPending(conversationId) },
+        localModelId = { installedModelIds(context.filesDir).firstOrNull() },
     )
     val councilDao = database.councilDao()
     val discussionDao = database.discussionDao()
 
     @Volatile
     var pendingDiscussion: PendingDiscussion? = null
+}
+
+internal fun installedModelIds(filesDir: File): List<String> {
+    val directory = OnDevicePreflight.modelDirectory(filesDir)
+    return OnDeviceModelCatalog.recommended.mapNotNull { model ->
+        val file = File(directory, model.fileName)
+        if (model.sha256 != null && file.isFile && file.length() == model.sizeBytes) model.id else null
+    }
 }
 
 private fun availableRam(context: Application): Long {

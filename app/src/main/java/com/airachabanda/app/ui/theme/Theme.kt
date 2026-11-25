@@ -9,39 +9,47 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.airachabanda.app.core.model.AppearanceMode
 
-private val Ink = Color(0xFF1C3D5A)
-private val InkDark = Color(0xFFC5D7E8)
-private val Paper = Color(0xFFF7F4EF)
-private val PaperDark = Color(0xFF101418)
-private val SurfaceDark = Color(0xFF1A2128)
-private val Secondary = Color(0xFF5C6B73)
+private val Navy = Color(0xFF10233F)
+private val Indigo = Color(0xFF3D4DB8)
+private val Violet = Color(0xFF6D4AFF)
+private val Paper = Color(0xFFF4F6FB)
+private val PaperDark = Color(0xFF0C1424)
+private val SurfaceDark = Color(0xFF162033)
 
 private val LightColors = lightColorScheme(
-    primary = Ink,
+    primary = Navy,
     onPrimary = Color.White,
-    secondary = Secondary,
+    primaryContainer = Color(0xFFD9E2FF),
+    onPrimaryContainer = Navy,
+    secondary = Indigo,
     onSecondary = Color.White,
+    tertiary = Violet,
+    onTertiary = Color.White,
     background = Paper,
-    onBackground = Color(0xFF1A1C1E),
+    onBackground = Color(0xFF121826),
     surface = Color.White,
-    onSurface = Color(0xFF1A1C1E),
-    surfaceVariant = Color(0xFFE7E2D8),
-    onSurfaceVariant = Color(0xFF3E4A52),
+    onSurface = Color(0xFF121826),
+    surfaceVariant = Color(0xFFE4E8F4),
+    onSurfaceVariant = Color(0xFF3C4660),
     error = Color(0xFF8C2F2F),
     onError = Color.White,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = InkDark,
-    onPrimary = Color(0xFF0E1A24),
-    secondary = Color(0xFFB7C4CC),
-    onSecondary = Color(0xFF1A1C1E),
+    primary = Color(0xFFB9C6FF),
+    onPrimary = Color(0xFF0C1730),
+    primaryContainer = Color(0xFF24345C),
+    onPrimaryContainer = Color(0xFFD9E2FF),
+    secondary = Color(0xFFC3C5FF),
+    onSecondary = Color(0xFF1B2148),
+    tertiary = Color(0xFFD4C4FF),
+    onTertiary = Color(0xFF2A1460),
     background = PaperDark,
-    onBackground = Color(0xFFE6E1D8),
+    onBackground = Color(0xFFE7EAF6),
     surface = SurfaceDark,
-    onSurface = Color(0xFFE6E1D8),
-    surfaceVariant = Color(0xFF2A313A),
-    onSurfaceVariant = Color(0xFFC4C7CC),
+    onSurface = Color(0xFFE7EAF6),
+    surfaceVariant = Color(0xFF2A3550),
+    onSurfaceVariant = Color(0xFFC5CCE0),
     error = Color(0xFFF2B8B5),
     onError = Color(0xFF601410),
 )

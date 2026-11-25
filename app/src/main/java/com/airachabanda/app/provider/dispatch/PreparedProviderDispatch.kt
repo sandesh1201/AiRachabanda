@@ -38,6 +38,7 @@ data class PreparedCall(
     val paidModel: Boolean = false,
     val quotaExhausted: Boolean = false,
     val credentialBoundToProject: Boolean = false,
+    val alreadyReserved: Boolean = false,
 )
 
 class PreparedProviderDispatch(
@@ -181,7 +182,7 @@ class PreparedProviderDispatch(
             )
         }
         val session = discussion.session(sessionId)
-        if (session != null) {
+        if (session != null && !call.alreadyReserved) {
             discussion.consumeBudget(
                 RequestBudgetEntryEntity(
                     id = "budget-$generationId",

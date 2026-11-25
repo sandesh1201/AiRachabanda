@@ -6,13 +6,13 @@ Multiple Perspectives. Collective Intelligence.
 
 Versioned APKs stay on [GitHub Releases](https://github.com/sandesh1201/AiRachabanda/releases), including the existing [v0.15.6 Beta](https://github.com/sandesh1201/AiRachabanda/releases/tag/v0.15.6-beta). The file in `APK/` is the current testing build and is replaced in place. Each replacement still increases Git history size.
 
-AI Rachabanda is a local-first native Android app. It keeps a council of AI participants on the device, shows assisted and automated access separately, and can load one on-device LiteRT-LM model at a time. Version 0.16.0 does not send paid API calls, and it does not treat automated online access as operational.
+AI Rachabanda is a local-first native Android app. It keeps a council of AI participants on the device, shows assisted and automated access separately, and can load one on-device LiteRT-LM model at a time. Version 0.16.1 does not send paid API calls, and it does not treat automated online access as operational.
 
 ## Overview
 
 Conversations, research state, and credentials stay on the phone. The app does not require an account, show ads, or use a dedicated server. A provider is shown as participating only after an authorized request returns a real response. The app does not invent consensus, citations, or confidence.
 
-## Implemented in 0.16.0
+## Implemented in 0.16.1
 
 - Provider setup for an API key or the official sign-in path, with secrets stored in the Android Keystore.
 - Assisted chat for consumer providers, kept separate from automated API use.
@@ -27,7 +27,7 @@ ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Microsoft Copilot, Qwen, Mi
 
 ## Automated and assisted participation
 
-Assisted participation opens the official chat. The app does not generate that response. Automated participation requires a stored credential, a verified free or included plan, and a completed connection test. In 0.16.0 every online provider remains short of Ready. A stored key alone does not enable automated inference. There is no paid fallback.
+Assisted participation opens the official chat. The app does not generate that response. Automated participation requires a stored credential, a verified free or included plan, and a completed connection test. In 0.16.1 every online provider remains short of Ready. An installed local model is asked inside the chat. ChatGPT opens in the browser, and that sign-in does not connect an automatic reply. A stored key alone does not enable automated inference. There is no paid fallback.
 
 ## Local AI
 
@@ -52,7 +52,7 @@ The testing APK is debug-signed. It is not a Play Store release and it uses the 
 3. On the phone, allow installation from your browser or file app.
 4. Install the APK. Android may warn that the certificate is a debug certificate.
 
-Package: `com.airachabanda.app`. Version: 0.16.0. Version code: 31.
+Package: `com.airachabanda.app`. Version: 0.16.1. Version code: 32.
 
 ## Android requirements
 
