@@ -283,7 +283,15 @@ class CouncilWorkflow(
             ResearchMode.DEEP_RESEARCH -> QuestionComplexity.HIGH
             ResearchMode.STANDARD, ResearchMode.CUSTOM -> QuestionComplexity.MODERATE
         }
-        val excluded = ProviderRegistry.all.map { it.id }.filter { it !in selectedProviders }.toSet()
+        val automatic = council.providerConfigs().mapNotNull { row ->
+            val id = runCatching { ProviderId.valueOf(row.providerId) }.getOrNull() ?: return@mapNotNull null
+            val billing = runCatching {
+                com.airachabanda.app.core.model.BillingEligibility.valueOf(row.billingEligibility)
+            }.getOrNull() ?: return@mapNotNull null
+            if (row.automatedInferenceEnabled && ZeroCostPolicy.automatedInferenceAllowed(id, billing)) id else null
+        }.toSet()
+        val selected = selectedProviders + automatic
+        val excluded = ProviderRegistry.all.map { it.id }.filter { it !in selected }.toSet()
         val budgets = DiscussionBudgets.resolve(
             mode,
             custom ?: DiscussionBudgets.standard().copy(rounds = roundLimit.coerceIn(1, DiscussionBudgets.MAX_ROUNDS)),
@@ -306,7 +314,8 @@ class CouncilWorkflow(
                 researchRequests = budgets.researchRequests,
             ),
         )
-        val snapshot = engine.runInstalledModel(accepted.sessionId)
+        val installed = engine.runInstalledModel(accepted.sessionId)
+        val snapshot = engine.runReadyAutomated(installed.sessionId)
         val assisted = inspect(conversationId).assistedOnly
         val assistance = if (assisted) {
             " Only assisted providers are available. You need to submit each prompt yourself and import the response."
@@ -456,6 +465,7 @@ class CouncilWorkflow(
             ),
         )
         engine.runInstalledModel(session.id)
+        engine.runReadyAutomated(session.id)
         return result.reason
     }
 

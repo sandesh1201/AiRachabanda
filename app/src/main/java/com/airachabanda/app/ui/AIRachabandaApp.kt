@@ -185,16 +185,23 @@ fun AIRachabandaApp(
                         onStart = { question, mode ->
                             val title = question.lineSequence().firstOrNull { it.isNotBlank() }?.take(60) ?: "New conversation"
                             history.create(title, mode) { id ->
-                                val participants = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
-                                    enabled
+                                val ready = providers.filter { config ->
+                                    config.automatedInferenceEnabled &&
+                                        com.airachabanda.app.orchestration.ZeroCostPolicy.automatedInferenceAllowed(
+                                            config.providerId,
+                                            config.billingEligibility,
+                                        )
+                                }.map { it.providerId }.toSet()
+                                val local = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
+                                    emptySet()
                                 } else {
-                                    enabled + ProviderId.LOCAL
+                                    setOf(ProviderId.LOCAL)
                                 }
                                 application.container.pendingDiscussion = PendingDiscussion(
                                     conversationId = id,
                                     question = question,
                                     mode = mode,
-                                    participants = participants,
+                                    participants = ready + local,
                                 )
                                 navController.navigate("council/$id") { launchSingleTop = true }
                             }
@@ -498,14 +505,14 @@ private fun CouncilRoute(
         onNewChat = { mode -> model.create(mode) { id -> navController.navigate("council/$id") } },
         onModeChange = { mode -> conversationId?.let { model.setMode(it, mode) } },
         onAddMessage = { body -> conversationId?.let { model.addMessage(it, body) } },
-        onStart = { question, selected ->
+        onStart = { question, _ ->
             val id = conversationId ?: return@CouncilScreen
-            val selectedWithLocal = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
-                selected
+            val local = if (com.airachabanda.app.installedModelIds(application.filesDir).isEmpty()) {
+                emptySet()
             } else {
-                selected + ProviderId.LOCAL
+                setOf(ProviderId.LOCAL)
             }
-            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, selectedWithLocal, notice)
+            model.start(id, question, conversation?.researchMode ?: ResearchMode.STANDARD, local, notice)
         },
         onAdvance = { conversationId?.let { model.advance(it, notice) } },
         onPrepare = { provider, question, mode, selected ->

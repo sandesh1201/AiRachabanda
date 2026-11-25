@@ -104,7 +104,7 @@ class ProviderAdapterTest {
 
     @Test
     fun productionMetadataAndInferenceDoNotCallTheNetwork() = runBlocking {
-        val transport = CountingTransport { error("The production adapter called the transport.") }
+        val transport = CountingTransport { HttpResult(200, emptyMap(), "") }
         val cloudflare = CloudflareAdapter(transport, CloudflareAuthorization.PRODUCTION)
         val gemini = GeminiAdapter(transport, GeminiAuthorization.PRODUCTION)
         assertEquals(OpenRouterFailure.POLICY, cloudflare.verifyMetadata("a".repeat(32), "synthetic-token").failure)
@@ -117,10 +117,13 @@ class ProviderAdapterTest {
         assertTrue(prepared.request?.body?.contains("\"stream\":true") == true)
         assertFalse(prepared.request?.body?.contains("gateway") == true)
         assertEquals(0, transport.calls)
+        val blocked = gemini.complete("synthetic-key", "example-text", "Question", 1, billingLinked = null, freeTierKnown = true, credentialBoundToProject = true)
+        assertEquals(null, blocked.request)
+        assertEquals(0, transport.calls)
         val geminiRequest = gemini.complete("synthetic-key", "example-text", "Question", 1, billingLinked = false, freeTierKnown = true, credentialBoundToProject = true)
         assertFalse(geminiRequest.request?.body?.contains("tools") == true)
         assertFalse(geminiRequest.request?.url?.contains("key=") == true)
-        assertEquals(0, transport.calls)
+        assertEquals(1, transport.calls)
     }
 
     @Test

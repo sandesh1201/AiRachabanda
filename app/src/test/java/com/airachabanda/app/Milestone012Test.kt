@@ -27,7 +27,7 @@ class Milestone012Test {
     @Test
     fun providerStatusUsesObservedState() {
         val chat = config(ProviderId.CHATGPT, ParticipationMode.ASSISTED, BillingEligibility.UNKNOWN, false)
-        assertEquals("Assisted chat available", ProviderPresentation.status(chat))
+        assertEquals("Manual access only", ProviderPresentation.status(chat))
         assertEquals("Disabled", ProviderPresentation.status(chat, enabled = false))
 
         val api = config(ProviderId.OPENROUTER, ParticipationMode.UNAVAILABLE, BillingEligibility.UNKNOWN, false)
@@ -35,7 +35,7 @@ class Milestone012Test {
         assertEquals("Automated API", ProviderPresentation.kind(api))
 
         val ready = config(ProviderId.GROQ, ParticipationMode.AUTOMATED, BillingEligibility.VERIFIED_FREE, true, AccountChoice.FREE_ACCOUNT)
-        assertEquals("Ready for automated participation", ProviderPresentation.status(ready))
+        assertEquals("Ready", ProviderPresentation.status(ready))
 
         val blocked = config(ProviderId.GROQ, ParticipationMode.UNAVAILABLE, BillingEligibility.BLOCKED, false, AccountChoice.FREE_ACCOUNT)
         assertEquals("Billing blocked", ProviderPresentation.status(blocked))
@@ -43,7 +43,7 @@ class Milestone012Test {
         val exhausted = config(ProviderId.GROQ, ParticipationMode.AUTOMATED, BillingEligibility.VERIFIED_FREE, true, AccountChoice.FREE_ACCOUNT)
         assertEquals("Free quota exhausted", ProviderPresentation.status(exhausted, quotaExhausted = true))
         val gemini = config(ProviderId.GEMINI, ParticipationMode.UNAVAILABLE, BillingEligibility.UNKNOWN, false)
-        assertEquals("Assisted chat available", ProviderPresentation.status(gemini))
+        assertEquals("Manual access only", ProviderPresentation.status(gemini))
     }
 
     @Test

@@ -43,6 +43,11 @@ class CouncilRepository(
     fun observeMessages(conversationId: String): Flow<List<ChatMessage>> =
         dao.observeMessages(conversationId).map { rows -> rows.map { it.toModel() } }
 
+    suspend fun providerConfigs(): List<ProviderConfig> {
+        ensureSeeded()
+        return dao.providerConfigs().map { it.toModel() }
+    }
+
     fun observeProviderConfigs(): Flow<List<ProviderConfig>> =
         dao.observeProviderConfigs().map { rows ->
             ProviderRegistry.all.map { definition ->
@@ -121,6 +126,21 @@ class CouncilRepository(
                 type = "USER_MESSAGE_STORED",
                 summary = "Your message was stored on this device. It was not sent to a provider.",
             ),
+        )
+    }
+
+    suspend fun recordVerifiedAutomation(providerId: ProviderId, billing: BillingEligibility) {
+        ensureSeeded()
+        val current = dao.findProvider(providerId.name)?.toModel()
+            ?: ProviderRegistry.definition(providerId).toDefaultConfig(clock())
+        dao.upsertProvider(
+            current.copy(
+                accountChoice = AccountChoice.FREE_ACCOUNT,
+                billingEligibility = billing,
+                participationMode = ParticipationMode.AUTOMATED,
+                automatedInferenceEnabled = true,
+                updatedAtEpochMs = clock(),
+            ).toEntity(),
         )
     }
 

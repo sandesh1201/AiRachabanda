@@ -133,12 +133,12 @@ object GeminiBillingPolicy {
             !freeTierKnown -> "Free-tier pricing for this model was not in the model list."
             quotaExhausted -> "The observed free quota is exhausted. No further request is sent."
             sessionBudgetRemaining <= 0 -> "The session request budget is exhausted."
-            else -> "Billing is unlinked and the model is marked free of charge. Live inference is not authorized."
+            else -> "Billing is unlinked and the model is marked free of charge. A live request is permitted."
         }
         val accepted = reason.startsWith("Billing is unlinked")
         return BillingDecision(
             accepted = accepted,
-            liveCallPermitted = false,
+            liveCallPermitted = accepted,
             reason = reason,
             snapshot = BillingSnapshot(
                 providerId = ProviderId.GEMINI,
@@ -155,7 +155,7 @@ object GeminiBillingPolicy {
                 },
                 verificationSource = if (plan == PlanState.FREE_DOCUMENTED || plan == PlanState.PAID) VerificationSource.PROGRAMMATIC else VerificationSource.INSUFFICIENT,
                 verifiedAt = if (billingLinked == null) "Never" else "Separate billing read",
-                blockers = if (accepted) "Live inference is not authorized." else reason,
+                blockers = if (accepted) "None for this unlinked project." else reason,
             ),
         )
     }

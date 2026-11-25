@@ -31,6 +31,8 @@ import com.airachabanda.app.provider.openrouter.OpenRouterDispatch
 import com.airachabanda.app.provider.openrouter.OpenRouterStatusStore
 import com.airachabanda.app.provider.openrouter.UrlConnectionTransport
 import com.airachabanda.app.security.AndroidKeystoreGateway
+import com.airachabanda.app.security.CredentialAccess
+import com.airachabanda.app.security.CredentialAccounts
 import com.airachabanda.app.security.CredentialStore
 import com.airachabanda.app.core.model.ProviderId
 import com.airachabanda.app.core.model.ResearchMode
@@ -136,6 +138,20 @@ class AppContainer(context: Application) {
         attachmentContext = { conversationId, sessionId -> attachments.prepare(conversationId, sessionId) },
         onDiscussionStopped = { conversationId -> documents.cancelPending(conversationId) },
         localModelId = { installedModelIds(context.filesDir).firstOrNull() },
+        providerSecret = { id ->
+            if (id != ProviderId.GEMINI) {
+                null
+            } else {
+                val access = credentialStore.get(id.name, CredentialAccounts.DEFAULT)
+                if (access is CredentialAccess.Available) {
+                    val text = access.secret.toString(Charsets.UTF_8)
+                    access.secret.fill(0)
+                    text
+                } else {
+                    null
+                }
+            }
+        },
     )
     val councilDao = database.councilDao()
     val discussionDao = database.discussionDao()

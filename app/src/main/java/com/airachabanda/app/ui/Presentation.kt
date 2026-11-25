@@ -89,12 +89,12 @@ object ProviderPresentation {
         }
         val modes = ProviderAccess.profile(config.providerId).modes
         if (verified && config.automatedInferenceEnabled && ProviderAccessMode.FREE_AUTOMATED_API in modes) {
-            return "Ready for automated participation"
+            return "Ready"
         }
         if (verified) return "Free eligibility verified"
         val configured = credentialStored || config.accountChoice != AccountChoice.NOT_CONFIGURED
         if (!configured) {
-            if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
+            if (AccessLabel.FREE_CHAT in labels) return "Manual access only"
             if (AccessLabel.CONFIGURATION_REQUIRED in labels || AccessLabel.BILLING_VERIFICATION_REQUIRED in labels) {
                 return "Not configured"
             }
@@ -104,7 +104,7 @@ object ProviderPresentation {
                 return "Verification required"
             }
             if (credentialStored) return "Credential stored"
-            if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
+            if (AccessLabel.FREE_CHAT in labels) return "Manual access only"
             return "Not configured"
         }
         if (AccessLabel.FREE_CHAT in labels) return "Assisted chat available"
@@ -157,7 +157,7 @@ object ConnectionPresentation {
     const val NOT_CONNECTED = "Not connected"
     const val CONNECTING = "Connecting"
     const val READY = "Ready"
-    const val ASSISTED_CHAT = "Assisted chat"
+    const val ASSISTED_CHAT = "Manual access only"
     const val FREE_ACCESS_UNAVAILABLE = "Free access unavailable"
     const val TEMPORARILY_UNAVAILABLE = "Temporarily unavailable"
     const val SETUP_REQUIRED = "Setup required"
@@ -202,7 +202,7 @@ object ConnectionPresentation {
     fun explanation(state: String, providerId: ProviderId): String = when (state) {
         CONNECTING -> "Checking this provider. No paid request is sent."
         READY -> "Free access is verified. This provider can join the Council."
-        ASSISTED_CHAT -> "Sign in on the official page. A reply you bring back is marked as yours."
+        ASSISTED_CHAT -> "Open website shows the provider's own chat. Signing in there does not connect this app."
         FREE_ACCESS_UNAVAILABLE -> "This account can be charged, so automated use stays off. Other AIs can continue."
         TEMPORARILY_UNAVAILABLE -> when (providerId) {
             ProviderId.LOCAL -> "No local model is installed. Other AIs can continue."
@@ -215,7 +215,7 @@ object ConnectionPresentation {
             ProviderId.GEMINI -> "The key is saved. Project billing is not verified, so automated use stays off."
             else -> "The key is saved. Free access is not verified, so automated use stays off."
         }
-        else -> "Enter an API key or use the official sign-in, then tap Connect."
+        else -> "Paste an API key and tap Connect. Opening a website does not connect this app."
     }
 }
 

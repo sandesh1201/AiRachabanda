@@ -140,12 +140,11 @@ fun ProviderSetupScreen(
         Text(ConnectionPresentation.explanation(connection, spec.id))
         if (result.isNotBlank()) Text(result, style = MaterialTheme.typography.bodyMedium)
         if (assisted && signIn != null) {
-            Button(onClick = { onOpenUrl(signIn.url) }, modifier = Modifier.fillMaxWidth()) { Text("Official sign-in") }
-            OutlinedButton(onClick = { onOpenUrl("browser:${signIn.url}") }, modifier = Modifier.fillMaxWidth()) { Text("Open in browser") }
+            OutlinedButton(onClick = { onOpenUrl("browser:${signIn.url}") }, modifier = Modifier.fillMaxWidth()) { Text("Open website") }
         }
-        if (spec.id == com.airachabanda.app.core.model.ProviderId.CHATGPT) {
+        if (spec.id == ProviderId.CHATGPT) {
             Text(
-                "Sign in with ChatGPT plan usage is only available to participating apps. This app is not one of them. A website sign-in does not create an automatic reply, and this app does not spend your ChatGPT allowance or credits.",
+                com.airachabanda.app.provider.chatgpt.ChatGptPlanUsage.disabledReason(),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -186,10 +185,10 @@ fun ProviderSetupScreen(
                     onDeclare(AccountChoice.FREE_ACCOUNT)
                     onToggle(true)
                     connecting = false
-                    result = "Assisted chat is on. Sign in on the official page. No API request was sent."
+                    result = "Manual chat is optional. Opening the website does not connect this app, and no reply is created here."
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (enabled) "Connected for assisted chat" else "Connect") }
+            ) { Text(if (enabled) "Manual chat on" else "Use manual chat") }
         }
         if (local) {
             LocalAiPanel()
@@ -280,7 +279,7 @@ fun ProviderSetupScreen(
             text = {
                 Text(
                     when (spec.id) {
-                        ProviderId.GEMINI -> "Connect saves the key, then opens Google's authorization. If you allow it, the app reads the project that owns the key and whether billing is enabled. The test question is not sent."
+                        ProviderId.GEMINI -> "Connect saves the key and opens Google authorization. If billing is off, one short test is sent. Gemini becomes Ready only when a real reply arrives."
                         ProviderId.GROQ -> "Connect saves the key and reads the model list. That response does not show the Free plan, so automated use stays off. No completion is sent."
                         ProviderId.OPENROUTER -> "Connect saves the key and reads its limits and model prices. A free model name is not enough. No completion is sent."
                         ProviderId.CLOUDFLARE -> "Connect saves the token, asks which account it can see, and reads subscriptions. A missing paid plan is not Workers Free. No model is run."
@@ -301,7 +300,7 @@ fun ProviderSetupScreen(
                         ProviderId.GEMINI -> {
                             pendingGemini = true
                             onSaveSecrets(values)
-                            result = "The key is being saved. Google authorization is next. No test question is sent."
+                            result = "The key is being saved. Google authorization is next."
                         }
                         ProviderId.GROQ, ProviderId.OPENROUTER, ProviderId.CLOUDFLARE -> {
                             connecting = true

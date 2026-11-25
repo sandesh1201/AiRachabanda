@@ -50,7 +50,7 @@ object ProviderAccess {
         local(),
     ).associateBy { it.providerId }
 
-    val defaultEnabled: Set<ProviderId> = setOf(ProviderId.CLAUDE)
+    val defaultEnabled: Set<ProviderId> = emptySet()
 
     fun profile(id: ProviderId): ProviderAccessProfile = profiles.getValue(id)
 

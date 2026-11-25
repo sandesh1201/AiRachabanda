@@ -11,6 +11,7 @@ import com.airachabanda.app.documents.ConversationAttachment
 import com.airachabanda.app.documents.GeneratedDocumentItem
 import com.airachabanda.app.AppContainer
 import com.airachabanda.app.core.model.AccountChoice
+import com.airachabanda.app.core.model.BillingEligibility
 import com.airachabanda.app.core.model.AppearanceMode
 import com.airachabanda.app.core.model.AssistedTaskState
 import com.airachabanda.app.core.model.ChatMessage
@@ -718,13 +719,42 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             geminiRecord = report.record
             geminiStatus.value = report.summary
             val billingOff = report.summary.contains("billingEnabled is false")
+            if (billingOff && report.record != null) {
+                val inference = geminiSession.infer(
+                    apiKey,
+                    accessToken,
+                    report.record,
+                    inferenceConsent = true,
+                    budgetRemaining = geminiBudget,
+                )
+                if (inference.sent) geminiBudget = inference.budgetRemaining
+                if (inference.text.isNotBlank()) {
+                    container.repository.recordVerifiedAutomation(ProviderId.GEMINI, BillingEligibility.VERIFIED_FREE)
+                    preferences.setParticipantEnabled(ProviderId.GEMINI, true)
+                    recordEligibility(
+                        ProviderId.GEMINI,
+                        RuntimeEligibility(
+                            credentialStored = true,
+                            authenticationVerified = true,
+                            billingVerified = true,
+                            eligibleModelDiscovered = true,
+                            connectionTested = true,
+                            detail = inference.summary,
+                        ),
+                    )
+                    onResult("Gemini is ready. ${inference.summary}")
+                    return@launch
+                }
+                onResult(inference.summary)
+                return@launch
+            }
             recordEligibility(
                 ProviderId.GEMINI,
                 RuntimeEligibility(
                     credentialStored = true,
                     authenticationVerified = report.record != null,
-                    billingVerified = billingOff,
-                    eligibleModelDiscovered = report.record != null && billingOff,
+                    billingVerified = false,
+                    eligibleModelDiscovered = false,
                     connectionTested = false,
                     detail = report.summary,
                 ),

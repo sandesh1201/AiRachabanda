@@ -23,7 +23,7 @@ class Milestone015BTest {
         val chat = config(ProviderId.CLAUDE, BillingEligibility.UNKNOWN, AccountChoice.NOT_CONFIGURED)
         assertEquals(ConnectionPresentation.ASSISTED_CHAT, ConnectionPresentation.state(chat, enabled = true))
         val declared = chat.copy(accountChoice = AccountChoice.FREE_ACCOUNT, participationMode = ParticipationMode.ASSISTED)
-        assertEquals("Assisted chat available", ProviderPresentation.status(declared, credentialStored = false))
+        assertEquals("Manual access only", ProviderPresentation.status(declared, credentialStored = false))
         assertEquals(ConnectionPresentation.NOT_CONNECTED, ConnectionPresentation.state(chat, enabled = false))
 
         val stored = config(ProviderId.GROQ, BillingEligibility.UNKNOWN, AccountChoice.NOT_CONFIGURED)

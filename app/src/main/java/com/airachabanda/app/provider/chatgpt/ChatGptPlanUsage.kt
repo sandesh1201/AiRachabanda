@@ -34,7 +34,7 @@ object ChatGptPlanUsage {
     private val random = SecureRandom()
 
     fun disabledReason(): String =
-        "Automated ChatGPT inference is disabled until the application can guarantee that purchased credits are not consumed."
+        "Sign in with ChatGPT for open-source tools requires an HTTP loopback callback on 127.0.0.1 and can spend ChatGPT plan allowance or credits. Website login on chatgpt.com is not that flow. Automatic ChatGPT replies stay off until loopback return and zero-extra-charge protection are proven on Android."
 
     fun prepareAuthorization(
         loopbackPort: Int,

@@ -65,7 +65,20 @@ class DatabaseParticipantSource(
                 ?: definition.defaultParticipation
             val billing = row?.billingEligibility?.let(BillingEligibility::valueOf)
                 ?: definition.defaultBilling
-            when (ProviderAccess.active(definition.id)) {
+            val verifiedAutomation = row?.automatedInferenceEnabled == true &&
+                ZeroCostPolicy.automatedInferenceAllowed(definition.id, billing)
+            if (verifiedAutomation) {
+                EligibleParticipant(
+                    providerId = definition.id,
+                    assisted = false,
+                    billing = billing,
+                    verifiedModelId = if (definition.id == ProviderId.GEMINI) {
+                        com.airachabanda.app.provider.gemini.GeminiFreeCatalog.PREFERRED
+                    } else {
+                        com.airachabanda.app.core.model.ModelIdentity.UNKNOWN
+                    },
+                )
+            } else when (ProviderAccess.active(definition.id)) {
                 ParticipationMode.ASSISTED -> EligibleParticipant(definition.id, assisted = true, billing = billing)
                 ParticipationMode.AUTOMATED -> EligibleParticipant(definition.id, assisted = false, billing = billing)
                 ParticipationMode.UNAVAILABLE -> null
@@ -113,6 +126,7 @@ class OrchestrationEngine(
     private val attachmentContext: suspend (conversationId: String, sessionId: String) -> String = { _, _ -> "" },
     private val onDiscussionStopped: suspend (conversationId: String) -> Unit = {},
     private val localModelId: () -> String? = { null },
+    private val providerSecret: suspend (ProviderId) -> String? = { null },
 ) {
     private val mutex = Mutex()
 
@@ -1677,6 +1691,43 @@ class OrchestrationEngine(
                     providerId = ProviderId.LOCAL,
                     modelId = modelId,
                     secret = "",
+                    alreadyReserved = true,
+                ),
+            )
+            council.updateTaskState(
+                task.id,
+                if (outcome.completed) AssistedTaskState.COMPLETED.name else AssistedTaskState.FAILED.name,
+                clock(),
+            )
+            if (!outcome.completed) note(sessionId, outcome.reason)
+        }
+        return advance(sessionId)
+    }
+
+    suspend fun runReadyAutomated(sessionId: String): SessionSnapshot {
+        val ready = council.tasksForSession(sessionId).filter {
+            it.providerId == ProviderId.GEMINI.name &&
+                it.automated &&
+                it.state == AssistedTaskState.READY.name
+        }
+        if (ready.isEmpty()) return snapshot(sessionId)
+        ready.forEach { task ->
+            val secret = providerSecret(ProviderId.GEMINI).orEmpty()
+            if (secret.isBlank()) {
+                council.updateTaskState(task.id, AssistedTaskState.FAILED.name, clock())
+                note(sessionId, "Gemini is not ready. No request was sent.")
+                return@forEach
+            }
+            val outcome = dispatchPrepared(
+                sessionId,
+                task.id,
+                PreparedCall(
+                    providerId = ProviderId.GEMINI,
+                    modelId = com.airachabanda.app.provider.gemini.GeminiFreeCatalog.PREFERRED,
+                    secret = secret,
+                    billingLinked = false,
+                    freeTierKnown = true,
+                    credentialBoundToProject = true,
                     alreadyReserved = true,
                 ),
             )

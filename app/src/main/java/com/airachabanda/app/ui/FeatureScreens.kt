@@ -193,7 +193,10 @@ fun HomeScreen(
                             id == ProviderId.LOCAL && localInstalled -> "Installed"
                             id == ProviderId.LOCAL -> "Download"
                             config == null -> "Loading"
-                            else -> providerStatus(config, enabledProviders)
+                            else -> {
+                            val label = providerStatus(config, enabledProviders)
+                            if (label == "Assisted chat available") "Manual access only" else label
+                        }
                         }
                         Card(onClick = { if (id == ProviderId.LOCAL) onOpenLocal() else onOpenAccount(id) }) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {

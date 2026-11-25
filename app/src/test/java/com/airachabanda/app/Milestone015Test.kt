@@ -56,7 +56,7 @@ class Milestone015Test {
             credentialBoundToProject = true,
         )
         assertTrue(decision.accepted)
-        assertFalse(decision.liveCallPermitted)
+        assertTrue(decision.liveCallPermitted)
     }
 
     @Test

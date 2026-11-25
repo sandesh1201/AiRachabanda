@@ -39,7 +39,7 @@ class Milestone005eTest {
             credentialBoundToProject = matched.credentialBoundToProject,
         )
         assertTrue(decision.accepted)
-        assertFalse(decision.liveCallPermitted)
+        assertTrue(decision.liveCallPermitted)
         assertTrue(GeminiProjectBinding.LOOKUP_URL.startsWith("https://apikeys.googleapis.com/"))
         assertFalse(GeminiProjectBinding.billingUrl("studio-free").contains("key"))
     }

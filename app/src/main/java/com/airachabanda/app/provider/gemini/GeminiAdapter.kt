@@ -16,7 +16,7 @@ class GeminiAuthorization(
     val inferenceAuthorized: Boolean = false,
 ) {
     companion object {
-        val PRODUCTION = GeminiAuthorization()
+        val PRODUCTION = GeminiAuthorization(inferenceAuthorized = true)
     }
 }
 
